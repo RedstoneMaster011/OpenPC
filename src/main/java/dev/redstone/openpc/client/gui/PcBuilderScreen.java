@@ -57,7 +57,6 @@ public class PcBuilderScreen extends Screen {
     private int viewW;
     private int viewH;
     private int[] scenePixels;
-    private NativeImage sceneImage;
     private NativeImageBackedTexture sceneTexture;
     private Identifier sceneTextureId;
 
@@ -117,15 +116,12 @@ public class PcBuilderScreen extends Screen {
     }
 
     private void recreateSceneBuffers() {
-        if (sceneImage != null) {
-            sceneImage.close();
-        }
         if (sceneTexture != null) {
             MinecraftClient.getInstance().getTextureManager().destroyTexture(SCENE_TEXTURE_ID);
             sceneTexture.close();
+            sceneTexture = null;
         }
         this.scenePixels = new int[viewW * viewH];
-        this.sceneImage = new NativeImage(viewW, viewH, true);
         this.sceneTexture = new NativeImageBackedTexture(() -> "openpc builder scene", viewW, viewH, true);
         this.sceneTextureId = SCENE_TEXTURE_ID;
         MinecraftClient.getInstance().getTextureManager().registerTexture(sceneTextureId, sceneTexture);
@@ -603,15 +599,21 @@ public class PcBuilderScreen extends Screen {
     }
 
     private void renderScene(DrawContext context) {
+        if (sceneTexture == null) {
+            return;
+        }
+        NativeImage image = sceneTexture.getImage();
+        if (image == null || image.getWidth() != viewW || image.getHeight() != viewH) {
+            return;
+        }
         ComponentTextures.ensureLoaded(MinecraftClient.getInstance());
         List<Face> faces = CaseModel.build(working, openCase);
         SoftwareRenderer.render(faces, camera, viewW, viewH, scenePixels);
         for (int y = 0; y < viewH; y++) {
             for (int x = 0; x < viewW; x++) {
-                sceneImage.setColorArgb(x, y, scenePixels[y * viewW + x]);
+                image.setColorArgb(x, y, scenePixels[y * viewW + x]);
             }
         }
-        sceneTexture.setImage(sceneImage);
         sceneTexture.upload();
         context.drawTexture(RenderPipelines.GUI, sceneTextureId, viewX, viewY, 0, 0, viewW, viewH, viewW, viewH);
     }
@@ -695,10 +697,6 @@ public class PcBuilderScreen extends Screen {
             MinecraftClient.getInstance().getTextureManager().destroyTexture(SCENE_TEXTURE_ID);
             sceneTexture.close();
             sceneTexture = null;
-        }
-        if (sceneImage != null) {
-            sceneImage.close();
-            sceneImage = null;
         }
         PcClientController.onBuilderClosed(this);
         super.removed();
