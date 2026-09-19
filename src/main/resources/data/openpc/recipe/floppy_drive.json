@@ -1,0 +1,13 @@
+{
+  "type": "minecraft:crafting_shapeless",
+  "ingredients": [
+    "minecraft:iron_ingot",
+    "minecraft:iron_ingot",
+    "minecraft:paper",
+    "minecraft:paper"
+  ],
+  "result": {
+    "id": "openpc:floppy_drive",
+    "count": 1
+  }
+}

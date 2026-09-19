@@ -1,0 +1,12 @@
+{
+  "type": "minecraft:crafting_shapeless",
+  "ingredients": [
+    "openpc:gpu_basic",
+    "minecraft:diamond",
+    "minecraft:gold_ingot"
+  ],
+  "result": {
+    "id": "openpc:gpu_advanced",
+    "count": 1
+  }
+}

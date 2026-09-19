@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "id": "openpc",
+  "version": "${version}",
+  "name": "OpenPC",
+  "description": "A Minecraft mod that lets you emulate Computers Using QEMU. (You can make your own OS with https://github.com/RedstoneMaster011/OperationCrafter)",
+  "authors": [],
+  "contact": {},
+  "license": "All-Rights-Reserved",
+  "icon": "assets/openpc/icon.png",
+  "environment": "*",
+  "entrypoints": {
+    "fabric-datagen": [
+      "dev.redstone.openpc.client.OpenpcDataGenerator"
+    ],
+    "client": [
+      "dev.redstone.openpc.client.OpenpcClient"
+    ],
+    "main": [
+      "dev.redstone.openpc.Openpc"
+    ]
+  },
+  "mixins": [
+    "openpc.mixins.json"
+  ],
+  "depends": {
+    "fabricloader": ">=${loader_version}",
+    "fabric-api": "*",
+    "minecraft": "${minecraft_version}"
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "type": "minecraft:crafting_shapeless",
+  "ingredients": [
+    "minecraft:gold_ingot",
+    "minecraft:redstone",
+    "minecraft:quartz",
+    "minecraft:iron_ingot"
+  ],
+  "result": {
+    "id": "openpc:scsi_card",
+    "count": 1
+  }
+}

@@ -1,0 +1,7 @@
+/src/resources/qemu/
+/build/
+/idea/
+/.gradlew/
+/run/
+# Project exclude paths
+/.gradle/

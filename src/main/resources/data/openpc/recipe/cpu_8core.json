@@ -1,0 +1,16 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "pattern": [
+    "DID",
+    "DDD",
+    "DID"
+  ],
+  "key": {
+    "I": "minecraft:iron_block",
+    "D": "minecraft:diamond"
+  },
+  "result": {
+    "id": "openpc:cpu_8core",
+    "count": 1
+  }
+}

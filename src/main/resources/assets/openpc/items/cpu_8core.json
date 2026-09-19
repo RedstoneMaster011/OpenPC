@@ -1,0 +1,6 @@
+{
+  "model": {
+    "type": "minecraft:model",
+    "model": "openpc:item/cpu_8core"
+  }
+}

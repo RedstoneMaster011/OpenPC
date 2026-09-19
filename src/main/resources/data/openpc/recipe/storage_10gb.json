@@ -1,0 +1,11 @@
+{
+  "type": "minecraft:crafting_shapeless",
+  "ingredients": [
+    "openpc:storage_5gb",
+    "openpc:storage_5gb"
+  ],
+  "result": {
+    "id": "openpc:storage_10gb",
+    "count": 1
+  }
+}

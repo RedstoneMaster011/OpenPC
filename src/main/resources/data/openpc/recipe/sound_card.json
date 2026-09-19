@@ -1,0 +1,12 @@
+{
+  "type": "minecraft:crafting_shapeless",
+  "ingredients": [
+    "minecraft:iron_ingot",
+    "minecraft:note_block",
+    "minecraft:redstone"
+  ],
+  "result": {
+    "id": "openpc:sound_card",
+    "count": 1
+  }
+}

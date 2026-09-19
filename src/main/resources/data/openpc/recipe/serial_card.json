@@ -1,0 +1,12 @@
+{
+  "type": "minecraft:crafting_shapeless",
+  "ingredients": [
+    "minecraft:iron_ingot",
+    "minecraft:redstone",
+    "minecraft:quartz"
+  ],
+  "result": {
+    "id": "openpc:serial_card",
+    "count": 1
+  }
+}

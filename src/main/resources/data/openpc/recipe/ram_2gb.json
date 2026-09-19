@@ -1,0 +1,11 @@
+{
+  "type": "minecraft:crafting_shapeless",
+  "ingredients": [
+    "openpc:ram_1gb",
+    "openpc:ram_1gb"
+  ],
+  "result": {
+    "id": "openpc:ram_2gb",
+    "count": 1
+  }
+}
