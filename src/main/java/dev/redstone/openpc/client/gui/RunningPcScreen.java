@@ -1,5 +1,7 @@
 package dev.redstone.openpc.client.gui;
 
+import com.mojang.blaze3d.systems.RenderSystem;
+import dev.redstone.openpc.client.OpenpcQemuRuntime;
 import dev.redstone.openpc.client.PcClientController;
 import dev.redstone.openpc.client.QemuArguments;
 import dev.redstone.openpc.client.vnc.GlfwKeyMapping;
@@ -14,8 +16,10 @@ import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.client.gui.widget.ButtonWidget;
 import net.minecraft.client.input.CharInput;
 import net.minecraft.client.input.KeyInput;
+import net.minecraft.client.render.GameRenderer;
 import net.minecraft.client.texture.NativeImage;
 import net.minecraft.client.texture.NativeImageBackedTexture;
+import net.minecraft.client.util.math.MatrixStack;
 import net.minecraft.text.Text;
 import net.minecraft.util.Identifier;
 import net.minecraft.util.math.BlockPos;

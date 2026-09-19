@@ -47,6 +47,19 @@ public final class QemuEnvironment {
     }
 
     public static Path binaryPath() {
+        if (detectOs() != Os.WINDOWS) {
+            try {
+                ProcessBuilder which = new ProcessBuilder("which", "qemu-system-x86_64");
+                which.redirectErrorStream(true);
+                Process process = which.start();
+                String output = new String(process.getInputStream().readAllBytes()).trim();
+                process.waitFor();
+                if (process.exitValue() == 0 && !output.isEmpty()) {
+                    return Path.of(output);
+                }
+            } catch (IOException | InterruptedException ignored) {
+            }
+        }
         return QemuSetup.requireGameQemuDirectory().resolve(binaryName());
     }
 
@@ -86,7 +99,10 @@ public final class QemuEnvironment {
         if (detectOs() == Os.WINDOWS) {
             return "dsound";
         }
-        for (String candidate : List.of("sdl", "pa", "alsa")) {
+        if (detectOs() == Os.LINUX) {
+            return "pa";
+        }
+        for (String candidate : List.of("sdl", "pa", "alsa", "wav")) {
             if (soundBackends.contains(candidate)) {
                 return candidate;
             }
@@ -115,6 +131,7 @@ public final class QemuEnvironment {
         Path binary = binaryPath();
         ProcessBuilder probe = new ProcessBuilder(binary.toAbsolutePath().toString(), "-version");
         probe.redirectErrorStream(true);
+        probe.environment().put("LD_LIBRARY_PATH", QemuSetup.requireGameQemuDirectory().toAbsolutePath().toString());
         try {
             Process process = probe.start();
             String combined = new String(process.getInputStream().readAllBytes());
@@ -151,6 +168,7 @@ public final class QemuEnvironment {
             addAll(List.of(args));
         }});
         probe.redirectErrorStream(true);
+        probe.environment().put("LD_LIBRARY_PATH", QemuSetup.requireGameQemuDirectory().toAbsolutePath().toString());
         try {
             Process process = probe.start();
             String output = new String(process.getInputStream().readAllBytes());
@@ -173,12 +191,20 @@ public final class QemuEnvironment {
         if (help == null || help.isEmpty()) {
             return result;
         }
-        Pattern pattern = Pattern.compile("\\b(dsound|sdl|pa|alsa|pipewire|oss|coreaudio|none)\\b");
+        Pattern pattern = Pattern.compile("\\b(dsound|sdl|pa|alsa|pipewire|oss|coreaudio|none|wav)\\b");
         Matcher matcher = pattern.matcher(help);
         while (matcher.find()) {
             String backend = matcher.group(1);
             if (!result.contains(backend)) {
                 result.add(backend);
+            }
+        }
+        // If no backends found but help contains "Available audio drivers", add common backends
+        if (result.isEmpty() && help.contains("Available audio drivers")) {
+            for (String line : help.split("\n")) {
+                if (line.trim().equals("none")) result.add("none");
+                if (line.trim().equals("wav")) result.add("wav");
+                if (line.trim().equals("pa")) result.add("pa");
             }
         }
         return result;

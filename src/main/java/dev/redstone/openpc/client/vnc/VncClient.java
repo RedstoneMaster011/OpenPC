@@ -11,6 +11,7 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
@@ -65,10 +66,14 @@ public final class VncClient implements AutoCloseable {
             if (w <= 0 || h <= 0 || local.length < w * h || target.getWidth() < w || target.getHeight() < h) {
                 return;
             }
-            for (int y = 0; y < h; y++) {
-                for (int x = 0; x < w; x++) {
-                    target.setColorArgb(x, y, local[y * w + x]);
+            try {
+                for (int y = 0; y < h; y++) {
+                    for (int x = 0; x < w; x++) {
+                        target.setColorArgb(x, y, local[y * w + x]);
+                    }
                 }
+            } catch (IllegalStateException e) {
+                // Image was closed, ignore
             }
         }
     }
@@ -132,11 +137,45 @@ public final class VncClient implements AutoCloseable {
     }
 
     private void run() {
-        try (Socket connection = connect()) {
-            this.socket = connection;
-            this.in = new DataInputStream(new BufferedInputStream(connection.getInputStream()));
-            this.out = new BufferedOutputStream(connection.getOutputStream());
+        Socket connection = null;
+        IOException lastError = null;
+        int attempts = 0;
+        final int maxAttempts = 30;
+        
+        OpenpcQemuRuntime.logInfo("VNC connecting to " + describe() + "...");
+        
+        while (attempts < maxAttempts && run.get()) {
+            try {
+                connection = connect();
+                OpenpcQemuRuntime.logInfo("VNC connected to " + describe() + " on attempt " + (attempts + 1));
+                break;
+            } catch (IOException error) {
+                lastError = error;
+                attempts++;
+                OpenpcQemuRuntime.logInfo("VNC connection attempt " + attempts + "/" + maxAttempts + " failed: " + error.getMessage());
+                if (attempts < maxAttempts && run.get()) {
+                    try {
+                        Thread.sleep(500);
+                    } catch (InterruptedException ie) {
+                        Thread.currentThread().interrupt();
+                        return;
+                    }
+                }
+            }
+        }
+        
+        if (connection == null && run.get()) {
+            OpenpcQemuRuntime.logWarn("VNC connection to " + describe() + " failed after " + maxAttempts + " attempts: " + (lastError != null ? lastError.getMessage() : "unknown"));
+            return;
+        }
+        
+        try (Socket conn = connection) {
+            this.socket = conn;
+            this.in = new DataInputStream(new BufferedInputStream(conn.getInputStream()));
+            this.out = new BufferedOutputStream(conn.getOutputStream());
             handshake();
+            out.write(1); // shared desktop flag
+            out.flush();
             readServerInit();
             sendPixelFormat();
             sendEncodings();
@@ -200,6 +239,8 @@ public final class VncClient implements AutoCloseable {
         height.set(in.readUnsignedShort());
         synchronized (frameLock) {
             pixels = new int[width.get() * height.get()];
+            // Initialize to black
+            Arrays.fill(pixels, 0xff000000);
         }
         readPixelFormat();
         int nameLength = readInt();
@@ -207,8 +248,6 @@ public final class VncClient implements AutoCloseable {
             byte[] name = new byte[nameLength];
             in.readFully(name);
         }
-        out.write(1);
-        out.flush();
     }
 
     private void readPixelFormat() throws IOException {
@@ -297,10 +336,10 @@ public final class VncClient implements AutoCloseable {
                     int targetX = x + col;
                     if (targetX >= 0 && targetX < fbWidth) {
                         int offset = col * 4;
-                        int value = ((row[offset + 2] & 0xff) << 16)
-                                | ((row[offset + 1] & 0xff) << 8)
-                                | (row[offset] & 0xff);
-                        local[targetBase + targetX] = 0xff000000 | value;
+                        int r = row[offset + 2] & 0xff;
+                        int g = row[offset + 1] & 0xff;
+                        int b = row[offset] & 0xff;
+                        local[targetBase + targetX] = 0xff000000 | (r << 16) | (g << 8) | b;
                     }
                 }
             }

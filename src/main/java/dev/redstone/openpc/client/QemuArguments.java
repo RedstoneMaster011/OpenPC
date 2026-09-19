@@ -73,7 +73,9 @@ public final class QemuArguments {
             args.add("-audiodev");
             args.add(backend + ",id=snd0");
             args.add("-device");
-            args.add("AC97,audiodev=snd0");
+            args.add("intel-hda");
+            args.add("-device");
+            args.add("hda-output,audiodev=snd0");
         }
 
         String vga = vgaDevice(config);

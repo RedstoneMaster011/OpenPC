@@ -51,6 +51,11 @@ public final class PcClientController {
             return;
         }
 
+        // PC is off - ensure QEMU is stopped
+        if (QemuProcessManager.isRunning(config.pcId())) {
+            QemuProcessManager.requestStop(config.pcId());
+        }
+
         if (runningScreen != null && runningScreen.posEquals(pos)) {
             runningScreen.beforeDispose();
             if (client.currentScreen == runningScreen) {
@@ -58,7 +63,6 @@ public final class PcClientController {
             }
             runningScreen = null;
         }
-        QemuProcessManager.requestStop(config.pcId());
 
         if (builderScreen != null && builderScreen.posEquals(pos) && client.currentScreen == builderScreen) {
             builderScreen.applySnapshot(config);
