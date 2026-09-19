@@ -1,4 +1,4 @@
-/src/resources/qemu/
+/src/main/resources/qemu/
 /build/
 /.idea/
 /run/
