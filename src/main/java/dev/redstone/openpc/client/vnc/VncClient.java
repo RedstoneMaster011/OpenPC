@@ -18,6 +18,9 @@ import java.util.function.Consumer;
 
 public final class VncClient implements AutoCloseable {
 
+    private static final int MAX_DISPLAY_DIMENSION = 8192;
+    private static final int MAX_DEBUG_FRAMES = 60;
+
     private final String host;
     private final int port;
     private final AtomicBoolean run = new AtomicBoolean(true);
@@ -27,6 +30,8 @@ public final class VncClient implements AutoCloseable {
     private volatile int[] pixels = new int[0];
     private volatile boolean firstFrame;
     private final AtomicBoolean framePending = new AtomicBoolean(false);
+    private final AtomicBoolean debugCapture = new AtomicBoolean(false);
+    private volatile int debugFramesLeft;
     private volatile Consumer<VncClient> frameListener;
     private Socket socket;
     private DataInputStream in;
@@ -58,7 +63,49 @@ public final class VncClient implements AutoCloseable {
         return host + ":" + port;
     }
 
+    public void enableDebugCapture() {
+        debugCapture.set(true);
+        debugFramesLeft = MAX_DEBUG_FRAMES;
+    }
+
+    private String sampleReceived(int[] local, int w, int h) {
+        int len = w * h;
+        int first = local[0];
+        boolean allSame = true;
+        long white = 0;
+        long black = 0;
+        java.util.HashSet<Integer> seen = new java.util.HashSet<>();
+        java.util.LinkedHashSet<Integer> firstColors = new java.util.LinkedHashSet<>();
+        for (int i = 0; i < len; i++) {
+            int argb = local[i];
+            if (argb != first) {
+                allSame = false;
+            }
+            int r = (argb >> 16) & 0xff;
+            int g = (argb >> 8) & 0xff;
+            int b = argb & 0xff;
+            if (r > 0xf0 && g > 0xf0 && b > 0xf0) {
+                white++;
+            } else if (r < 0x10 && g < 0x10 && b < 0x10) {
+                black++;
+            }
+            seen.add(argb & 0xffffff);
+            if (firstColors.size() < 12) {
+                firstColors.add(argb & 0xffffff);
+            }
+        }
+        String colors = firstColors.stream().map(c -> String.format("#%06X", c))
+                .collect(java.util.stream.Collectors.joining(","));
+        return "size=" + w + "x" + h + " all_same=" + allSame
+                + " first=#" + String.format("%06X", first & 0xffffff)
+                + " white=" + (white * 100 / Math.max(1, len)) + "%"
+                + " black=" + (black * 100 / Math.max(1, len)) + "%"
+                + " distinct_colors=" + seen.size()
+                + " colors=(" + colors + ")";
+    }
+
     public void snapshotInto(NativeImage target) {
+        String report = null;
         synchronized (frameLock) {
             int w = width.get();
             int h = height.get();
@@ -75,6 +122,13 @@ public final class VncClient implements AutoCloseable {
             } catch (IllegalStateException e) {
                 // Image was closed, ignore
             }
+            if (debugCapture.get() && debugFramesLeft > 0) {
+                debugFramesLeft--;
+                report = sampleReceived(local, w, h);
+            }
+        }
+        if (report != null) {
+            OpenpcQemuRuntime.logInfo("VNC received #" + (MAX_DEBUG_FRAMES - debugFramesLeft) + ": " + report);
         }
     }
 
@@ -179,7 +233,7 @@ public final class VncClient implements AutoCloseable {
             readServerInit();
             sendPixelFormat();
             sendEncodings();
-            requestUpdate(true);
+            requestUpdate(false);
             messageLoop();
         } catch (IOException | RuntimeException error) {
             if (run.get()) {
@@ -284,31 +338,61 @@ public final class VncClient implements AutoCloseable {
     private void readFramebufferUpdate() throws IOException {
         in.skipNBytes(1);
         int rectangleCount = in.readUnsignedShort();
+        boolean receivedRectangle = false;
         for (int i = 0; i < rectangleCount; i++) {
             int x = in.readUnsignedShort();
             int y = in.readUnsignedShort();
             int w = in.readUnsignedShort();
             int h = in.readUnsignedShort();
             int encoding = readInt();
+            receivedRectangle = true;
+            if (encoding == -223) {
+                handleResize(w, h);
+                continue;
+            }
             readRectangle(x, y, w, h, encoding);
         }
-        this.firstFrame = true;
+        if (receivedRectangle) {
+            this.firstFrame = true;
+        }
         requestUpdate(true);
         notifyFrame();
+    }
+
+    private void handleResize(int newWidth, int newHeight) {
+        newWidth = Math.min(Math.max(newWidth, 1), MAX_DISPLAY_DIMENSION);
+        newHeight = Math.min(Math.max(newHeight, 1), MAX_DISPLAY_DIMENSION);
+        boolean changed;
+        synchronized (frameLock) {
+            changed = width.get() != newWidth || height.get() != newHeight;
+            if (changed) {
+                width.set(newWidth);
+                height.set(newHeight);
+                pixels = new int[newWidth * newHeight];
+                Arrays.fill(pixels, 0xff000000);
+            }
+        }
+        if (changed) {
+            OpenpcQemuRuntime.logInfo("VNC display resized to " + newWidth + "x" + newHeight);
+            try {
+                requestUpdate(false);
+            } catch (IOException ignored) {
+            }
+        }
     }
 
     private void readRectangle(int x, int y, int w, int h, int encoding) throws IOException {
         if (encoding == 0) {
             readRawRectangle(x, y, w, h);
-        } else if (encoding == -239) {
+        } else if (encoding == 1) {
             readCopyRectangle(x, y, w, h);
         } else {
-            skipRectangle(x, y, w, h, encoding);
+            throw new IOException("Unsupported VNC framebuffer encoding " + encoding);
         }
     }
 
     private void readRawRectangle(int x, int y, int w, int h) throws IOException {
-        if (x < 0 || y < 0 || w <= 0 || h <= 0) {
+        if (x < 0 || y < 0 || w <= 0 || h <= 0 || w > MAX_DISPLAY_DIMENSION || h > MAX_DISPLAY_DIMENSION) {
             readFramebufferRawIgnoring(x, y, w, h);
             return;
         }
@@ -318,29 +402,35 @@ public final class VncClient implements AutoCloseable {
             readFramebufferRawIgnoring(x, y, w, h);
             return;
         }
+        if (x + w > fbWidth || y + h > fbHeight) {
+            handleResize(Math.max(x + w, fbWidth), Math.max(y + h, fbHeight));
+            readFramebufferRawIgnoring(x, y, w, h);
+            return;
+        }
         byte[] row = new byte[w * 4];
+        for (int rowIndex = 0; rowIndex < h; rowIndex++) {
+            in.readFully(row);
+            writeRow(row, x, y + rowIndex, w);
+        }
+    }
+
+    private void writeRow(byte[] row, int x, int y, int w) {
         synchronized (frameLock) {
             int[] local = pixels;
-            if (local.length != fbWidth * fbHeight) {
-                readFramebufferRawIgnoring(x, y, w, h);
+            int fbWidth = width.get();
+            int fbHeight = height.get();
+            if (local.length != fbWidth * fbHeight || y < 0 || y >= fbHeight) {
                 return;
             }
-            for (int rowIndex = 0; rowIndex < h; rowIndex++) {
-                in.readFully(row);
-                int targetY = y + rowIndex;
-                if (targetY < 0 || targetY >= fbHeight) {
-                    continue;
-                }
-                int targetBase = targetY * fbWidth;
-                for (int col = 0; col < w; col++) {
-                    int targetX = x + col;
-                    if (targetX >= 0 && targetX < fbWidth) {
-                        int offset = col * 4;
-                        int r = row[offset + 2] & 0xff;
-                        int g = row[offset + 1] & 0xff;
-                        int b = row[offset] & 0xff;
-                        local[targetBase + targetX] = 0xff000000 | (r << 16) | (g << 8) | b;
-                    }
+            int targetBase = y * fbWidth;
+            for (int col = 0; col < w; col++) {
+                int targetX = x + col;
+                if (targetX >= 0 && targetX < fbWidth) {
+                    int offset = col * 4;
+                    int r = row[offset + 2] & 0xff;
+                    int g = row[offset + 1] & 0xff;
+                    int b = row[offset] & 0xff;
+                    local[targetBase + targetX] = 0xff000000 | (r << 16) | (g << 8) | b;
                 }
             }
         }
@@ -356,58 +446,17 @@ public final class VncClient implements AutoCloseable {
         int fbWidth = width.get();
         int fbHeight = height.get();
         if (sourceX < 0 || sourceY < 0 || sourceX + w > fbWidth || sourceY + h > fbHeight) {
-            readRawRectangle(x, y, w, h);
-            return;
+            throw new IOException("Invalid CopyRect source " + sourceX + "," + sourceY + " for " + w + "x" + h);
         }
         synchronized (frameLock) {
             int[] local = pixels;
             if (local.length != fbWidth * fbHeight) {
-                readRawRectangle(x, y, w, h);
-                return;
+                throw new IOException("Framebuffer changed while reading CopyRect.");
             }
             for (int row = 0; row < h; row++) {
                 System.arraycopy(local, (sourceY + row) * fbWidth + sourceX, local, (y + row) * fbWidth + x, w);
             }
         }
-    }
-
-    private void skipRectangle(int x, int y, int w, int h, int encoding) throws IOException {
-        if (encoding == -223) {
-            return;
-        }
-        if (encoding == 1) {
-            int[] paletted = new int[in.readUnsignedByte() + 1];
-            for (int i = 0; i < paletted.length; i++) {
-                int r = in.readUnsignedByte();
-                int g = in.readUnsignedByte();
-                int b = in.readUnsignedByte();
-                paletted[i] = 0xff000000 | (r << 16) | (g << 8) | b;
-            }
-            byte[] bytes = new byte[w * h];
-            in.readFully(bytes);
-            synchronized (frameLock) {
-                int[] local = pixels;
-                int fbWidth = width.get();
-                int fbHeight = height.get();
-                if (local.length == fbWidth * fbHeight) {
-                    for (int row = 0; row < h; row++) {
-                        for (int col = 0; col < w; col++) {
-                            int index = bytes[row * w + col] & 0xff;
-                            if (index < paletted.length) {
-                                int targetY = y + row;
-                                int targetX = x + col;
-                                if (targetX >= 0 && targetX < fbWidth && targetY >= 0 && targetY < fbHeight) {
-                                    local[targetY * fbWidth + targetX] = paletted[index];
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            return;
-        }
-        int bpp = 4;
-        in.skipNBytes((long) w * h * bpp);
     }
 
     private void readBell() throws IOException {
@@ -455,8 +504,9 @@ public final class VncClient implements AutoCloseable {
     private void sendEncodings() throws IOException {
         out.write(2);
         out.write(0);
-        writeShort(1);
+        writeShort(2);
         writeInt(0);
+        writeInt(-223);
         out.flush();
     }
 

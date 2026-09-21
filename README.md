@@ -1,7 +1,7 @@
 This is a mod that uses QEMU to run PC emulations inside of minecraft!
 
 # Why?
-- i made it well, umm. i saw VmComputers mod, and it was old,
+- i made it when i saw VmComputers mod, and it was old,
 and it was not updated in a while. so, im making a mod that is better!
 no external software needed, newer version, more features!.
 - Why should you use this?
@@ -24,4 +24,4 @@ no external software needed, newer version, more features!.
 
 # Shoutouts
 - QEMU https://www.qemu.org/ : Emulation Software.
-- VMComputers https://github.com/Delta2Force/MCVmComputers/releases : For the Idea.
+- VMComputers https://github.com/Delta2Force/MCVmComputers/ : For the Idea.

@@ -1,6 +1,5 @@
 package dev.redstone.openpc.client.gui;
 
-import com.mojang.blaze3d.systems.RenderSystem;
 import dev.redstone.openpc.client.OpenpcQemuRuntime;
 import dev.redstone.openpc.client.PcClientController;
 import dev.redstone.openpc.client.QemuArguments;
@@ -9,21 +8,21 @@ import dev.redstone.openpc.client.vnc.VncClient;
 import dev.redstone.openpc.client.net.OpenpcClientNetworking;
 import dev.redstone.openpc.data.PcConfig;
 import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.gl.RenderPipelines;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.Click;
 import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.client.gui.widget.ButtonWidget;
 import net.minecraft.client.input.CharInput;
 import net.minecraft.client.input.KeyInput;
-import net.minecraft.client.render.GameRenderer;
 import net.minecraft.client.texture.NativeImage;
 import net.minecraft.client.texture.NativeImageBackedTexture;
-import net.minecraft.client.util.math.MatrixStack;
 import net.minecraft.text.Text;
 import net.minecraft.util.Identifier;
 import net.minecraft.util.math.BlockPos;
 import org.lwjgl.glfw.GLFW;
+
+import java.nio.file.Files;
+import java.nio.file.Path;
 
 public class RunningPcScreen extends Screen {
 
@@ -73,13 +72,14 @@ public class RunningPcScreen extends Screen {
         if (displayTexture != null) {
             MinecraftClient.getInstance().getTextureManager().destroyTexture(DISPLAY_TEXTURE_ID);
             displayTexture.close();
+            displayTexture = null;
         }
         if (displayImage != null) {
             displayImage.close();
+            displayImage = null;
         }
-        int size = 2048;
-        this.displayImage = new NativeImage(size, size, true);
-        this.displayTexture = new NativeImageBackedTexture(() -> "openpc running pc", size, size, true);
+        this.displayImage = new NativeImage(1, 1, true);
+        this.displayTexture = new NativeImageBackedTexture(() -> "openpc running pc", displayImage);
         this.displayTextureId = DISPLAY_TEXTURE_ID;
         MinecraftClient.getInstance().getTextureManager().registerTexture(displayTextureId, displayTexture);
         this.powerOffButton = ButtonWidget.builder(Text.translatable("openpc.ui.power_off"), b -> requestPowerOff())
@@ -97,11 +97,34 @@ public class RunningPcScreen extends Screen {
         int port = QemuArguments.vncPortFor(pcId);
         VncClient client = new VncClient("127.0.0.1", port);
         client.setFrameListener(ignored -> frameArrived());
+        Path marker = OpenpcQemuRuntime.dataRoot().getParent().resolve("debug-frames.txt");
+        boolean capture = System.getProperty("openpc.debugFrames") != null
+                || Files.isRegularFile(marker)
+                || net.fabricmc.loader.api.FabricLoader.getInstance().isDevelopmentEnvironment();
+        if (capture) {
+            client.enableDebugCapture();
+        }
         client.start();
         this.vnc = client;
     }
 
     private void frameArrived() {
+    }
+
+    private void ensureDisplayTextureSize(int requiredWidth, int requiredHeight) {
+        if (requiredWidth <= 0 || requiredHeight <= 0 || displayImage == null || displayTexture == null) {
+            return;
+        }
+        if (displayImage.getWidth() == requiredWidth && displayImage.getHeight() == requiredHeight) {
+            return;
+        }
+        MinecraftClient.getInstance().getTextureManager().destroyTexture(DISPLAY_TEXTURE_ID);
+        displayTexture.close();
+        displayImage.close();
+        displayImage = new NativeImage(requiredWidth, requiredHeight, true);
+        displayTexture = new NativeImageBackedTexture(() -> "openpc running pc", displayImage);
+        displayTextureId = DISPLAY_TEXTURE_ID;
+        MinecraftClient.getInstance().getTextureManager().registerTexture(displayTextureId, displayTexture);
     }
 
     @Override
@@ -110,9 +133,9 @@ public class RunningPcScreen extends Screen {
         if (vnc == null) {
             connectVnc();
         }
-        if (vnc != null && vnc.consumePendingFrame()) {
+        if (vnc != null && vnc.consumePendingFrame() && displayImage != null && displayTexture != null) {
+            ensureDisplayTextureSize(vnc.width(), vnc.height());
             vnc.snapshotInto(displayImage);
-            displayTexture.setImage(displayImage);
             displayTexture.upload();
         }
         if (vnc != null && !vnc.hasFrame() && System.currentTimeMillis() - connectionStartedAt > CONNECT_TIMEOUT_MS) {
@@ -283,8 +306,9 @@ public class RunningPcScreen extends Screen {
         } else {
             int[] canvas = canvasSize();
             if (canvas != null) {
-                context.drawTexture(RenderPipelines.GUI, displayTextureId, canvasX(), canvasY(), 0, 0,
-                        canvas[2], canvas[3], canvas[0], canvas[1], displayImage.getWidth(), displayImage.getHeight());
+                int x = canvasX();
+                int y = canvasY();
+                context.drawTexturedQuad(displayTextureId, x, y, x + canvas[2], y + canvas[3], 0.0F, 1.0F, 0.0F, 1.0F);
             }
         }
         super.render(context, mouseX, mouseY, tickDelta);
