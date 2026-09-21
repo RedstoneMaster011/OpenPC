@@ -28,7 +28,7 @@ public final class SoftwareRenderer {
         for (int i = 0; i < depthBuffer.length; i++) {
             depthBuffer[i] = -1.0f;
         }
-        fill(outArgb, 0xffdfddda, width, height);
+        fill(outArgb, 0xff141a22, width, height);
 
         List<ProjectedFace> projected = new ArrayList<>();
         for (Face face : faces) {

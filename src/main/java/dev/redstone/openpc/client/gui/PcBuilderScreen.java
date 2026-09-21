@@ -65,6 +65,20 @@ public class PcBuilderScreen extends Screen {
     private int buttonSignature = Integer.MIN_VALUE;
     private PcValidationResult currentValidation;
     private final List<OverlayIcon> overlayIcons = new ArrayList<>();
+    private final List<InstalledLabel> installedLabels = new ArrayList<>();
+    private final List<OpenSection> openSections = new ArrayList<>();
+
+    private int layoutSideX;
+    private int layoutSideW;
+    private int layoutFieldY;
+    private int layoutPowerY;
+    private int layoutPowerH;
+    private int layoutOpenY;
+    private int layoutCpuY;
+    private int layoutMediaY;
+    private int layoutMediaRows;
+    private int layoutCompTextY;
+    private int layoutCompLines;
 
     public PcBuilderScreen(BlockPos pos, PcConfig config) {
         super(Text.translatable("openpc.screen.builder"));
@@ -106,14 +120,37 @@ public class PcBuilderScreen extends Screen {
 
     @Override
     protected void init() {
-        this.viewW = Math.min(420, Math.max(240, width - 220));
-        this.viewH = Math.min(300, Math.max(180, height - 90));
-        this.viewX = (width - viewW) / 2 - 20;
-        this.viewY = (height - viewH) / 2 - 16;
+        computeClosedLayout();
         recreateSceneBuffers();
         revalidate();
         this.buttonSignature = Integer.MIN_VALUE;
         rebuildButtons();
+    }
+
+    private void computeClosedLayout() {
+        this.layoutSideW = MathHelper.clamp((int) (width * 0.22f), 190, 238);
+        this.layoutSideX = width - layoutSideW - 12;
+        this.viewW = Math.min(420, Math.max(240, layoutSideX - 48));
+        this.viewH = Math.min(300, Math.max(180, height - 116));
+        this.viewX = 16;
+        this.viewY = 30;
+        int xs = layoutSideX + 10;
+        int iw = layoutSideW - 20;
+        int y = viewY + 10;
+        layoutFieldY = y + 14;
+        y = layoutFieldY + 12 + 12;
+        layoutPowerY = y + 14;
+        layoutPowerH = 22;
+        y = layoutPowerY + layoutPowerH + 16;
+        layoutOpenY = y;
+        y += 12 + 14;
+        layoutCpuY = y + 14;
+        y = layoutCpuY + 14 + 16;
+        layoutMediaY = y + 14;
+        layoutMediaRows = 1 + (working.opticalId() != null ? 1 : 0) + (working.floppyId() != null ? 1 : 0);
+        y = layoutMediaY + layoutMediaRows * 18 + 16;
+        layoutCompTextY = y + 14;
+        layoutCompLines = Math.max(4, Math.min(14, (height - 12 - layoutCompTextY) / 9));
     }
 
     private void recreateSceneBuffers() {
@@ -187,9 +224,11 @@ public class PcBuilderScreen extends Screen {
         return hash;
     }
 
-    private void rebuildButtons() {
+private void rebuildButtons() {
         clearChildren();
         overlayIcons.clear();
+        installedLabels.clear();
+        openSections.clear();
         buttonSignature = computeButtonSignature();
         revalidate();
 
@@ -202,17 +241,33 @@ public class PcBuilderScreen extends Screen {
 
     private void buildClosedCaseButtons() {
         boolean valid = currentValidation != null && currentValidation.isValid();
-        int powerW = Math.max(72, textRenderer.getWidth(Text.translatable("openpc.ui.power_on")) + 8);
+        computeClosedLayout();
+        int xs = layoutSideX + 10;
+        int iw = layoutSideW - 20;
+
+        int manageW = Math.min(112, Math.max(96, textRenderer.getWidth(Text.translatable("openpc.ui.manage_pcs")) + 12));
+        ButtonWidget manage = ButtonWidget.builder(Text.translatable("openpc.ui.manage_pcs"), b -> {
+            commitPcName();
+            MinecraftClient.getInstance().setScreen(new ManagePcsScreen(this));
+        }).dimensions(width - manageW - 12, 8, manageW, 12).build();
+        addDrawableChild(manage);
+
         ButtonWidget power = ButtonWidget.builder(Text.translatable("openpc.ui.power_on"), b -> powerOn())
-                .dimensions(viewX + viewW - powerW, viewY - 2, powerW, 12)
+                .dimensions(xs, layoutPowerY, iw, layoutPowerH)
                 .build();
         power.active = valid && !sending;
         addDrawableChild(power);
 
-        int mediaW = Math.min(220, Math.max(120, viewW / 2));
-        int mediaX = viewX + viewW - mediaW;
-        int mediaY = viewY + 14;
-        mediaY = addMediaButton(mediaX, mediaY, mediaW, "openpc.ui.select_iso", "openpc.ui.eject_iso",
+        ButtonWidget open = ButtonWidget.builder(Text.translatable("openpc.ui.open_case"), b -> {
+            openCase = true;
+            buttonSignature = Integer.MIN_VALUE;
+        }).dimensions(xs, layoutOpenY, iw, 12).build();
+        addDrawableChild(open);
+
+        addCpuTypeButtons();
+
+        int y = layoutMediaY;
+        y = addMediaButton(xs, y, iw, "openpc.ui.select_iso", "openpc.ui.eject_iso",
                 working.isoFileName(),
                 () -> openMediaPicker("openpc.ui.select_iso", "*.iso", "ISO images (*.iso)",
                         path -> working.setIsoFileName(path)),
@@ -221,7 +276,7 @@ public class PcBuilderScreen extends Screen {
                     commitDraft();
                 });
         if (working.opticalId() != null) {
-            mediaY = addMediaButton(mediaX, mediaY, mediaW, "openpc.ui.select_cdrom", "openpc.ui.eject_cdrom",
+            y = addMediaButton(xs, y, iw, "openpc.ui.select_cdrom", "openpc.ui.eject_cdrom",
                     working.cdromFileName(),
                     () -> openMediaPicker("openpc.ui.select_cdrom", "*.iso", "ISO images (*.iso)",
                             path -> working.setCdromFileName(path)),
@@ -231,7 +286,7 @@ public class PcBuilderScreen extends Screen {
                     });
         }
         if (working.floppyId() != null) {
-            addMediaButton(mediaX, mediaY, mediaW, "openpc.ui.select_floppy", "openpc.ui.eject_floppy",
+            addMediaButton(xs, y, iw, "openpc.ui.select_floppy", "openpc.ui.eject_floppy",
                     working.floppyFileName(),
                     () -> openMediaPicker("openpc.ui.select_floppy", "*.img", "Floppy images (*.img)",
                             path -> working.setFloppyFileName(path)),
@@ -241,75 +296,55 @@ public class PcBuilderScreen extends Screen {
                     });
         }
 
-        addCpuTypeButtons();
-
-        int nameW = Math.min(160, Math.max(110, viewW / 4));
-        nameField = new TextFieldWidget(textRenderer, viewX + 4, viewY + viewH - 34, nameW, 12, Text.translatable("openpc.ui.pc_name"));
+        nameField = new TextFieldWidget(textRenderer, xs, layoutFieldY, iw, 12, Text.translatable("openpc.ui.pc_name"));
         nameField.setMaxLength(32);
         nameField.setText(working.name() == null ? "" : working.name());
         nameField.setPlaceholder(Text.literal("PC-" + working.pcId()));
         addDrawableChild(nameField);
-
-        int openW = Math.max(80, textRenderer.getWidth(Text.translatable("openpc.ui.open_case")) + 8);
-        ButtonWidget open = ButtonWidget.builder(Text.translatable("openpc.ui.open_case"), b -> {
-            openCase = true;
-            buttonSignature = Integer.MIN_VALUE;
-        }).dimensions(viewX + (viewW - openW) / 2, viewY + viewH + 6, openW, 12).build();
-        addDrawableChild(open);
-
-        int manageW = Math.min(96, Math.max(88, textRenderer.getWidth(Text.translatable("openpc.ui.manage_pcs")) + 8));
-        ButtonWidget manage = ButtonWidget.builder(Text.translatable("openpc.ui.manage_pcs"), b -> {
-            commitPcName();
-            MinecraftClient.getInstance().setScreen(new ManagePcsScreen(this));
-        })
-                .dimensions(width - 96, height - 20, manageW, 12)
-                .build();
-        addDrawableChild(manage);
     }
 
-    private int addMediaButton(int x, int y, int width, String selectKey, String ejectKey,
+    private int addMediaButton(int x, int y, int w, String selectKey, String ejectKey,
                                String fileName, Runnable select, Runnable eject) {
-        Text label = fileName == null
-                ? Text.translatable(selectKey)
-                : Text.literal(shortenPath(fileName, Math.max(64, width - 8)));
+        boolean hasFile = fileName != null;
+        int ejectW = 52;
+        int selectW = hasFile ? w - ejectW - 6 : w;
+        Text label = hasFile
+                ? Text.literal(shortenPath(fileName, Math.max(64, selectW - 8)))
+                : Text.translatable(selectKey);
         ButtonWidget selectButton = ButtonWidget.builder(label, b -> select.run())
-                .dimensions(x, y, width, 12)
+                .dimensions(x, y, selectW, 12)
                 .build();
         selectButton.active = !sending;
         addDrawableChild(selectButton);
 
-        if (fileName != null) {
-            int ejectW = Math.max(48, textRenderer.getWidth(Text.translatable(ejectKey)) + 8);
+        if (hasFile) {
             addDrawableChild(ButtonWidget.builder(Text.translatable(ejectKey), b -> eject.run())
-                    .dimensions(x + width - ejectW, y + 14, ejectW, 12)
+                    .dimensions(x + selectW + 6, y, ejectW, 12)
                     .build());
         }
-        return y + 28;
+        return y + 18;
     }
 
     private void addCpuTypeButtons() {
-        int labelW = textRenderer.getWidth(Text.translatable("openpc.ui.cpu_type"));
-        int y = viewY + viewH - 16;
-        int x = viewX + 4 + labelW + 4;
-        int hostW = Math.max(44, textRenderer.getWidth(Text.translatable("openpc.ui.cpu_type_host")) + 8);
-        int amdW = Math.max(44, textRenderer.getWidth(Text.translatable("openpc.ui.cpu_type_amd")) + 8);
-        int intelW = Math.max(48, textRenderer.getWidth(Text.translatable("openpc.ui.cpu_type_intel")) + 8);
+        int xs = layoutSideX + 10;
+        int iw = layoutSideW - 20;
+        int bw = (iw - 8) / 3;
         ButtonWidget host = ButtonWidget.builder(cpuButtonText("host", "openpc.ui.cpu_type_host"), b -> {
             working.setCpuType("host");
             commitDraft();
-        }).dimensions(x, y, hostW, 12).build();
+        }).dimensions(xs, layoutCpuY, bw, 12).build();
         host.active = !sending;
         addDrawableChild(host);
         ButtonWidget amd = ButtonWidget.builder(cpuButtonText("amd", "openpc.ui.cpu_type_amd"), b -> {
             working.setCpuType("amd");
             commitDraft();
-        }).dimensions(x + hostW + 4, y, amdW, 12).build();
+        }).dimensions(xs + bw + 4, layoutCpuY, bw, 12).build();
         amd.active = !sending;
         addDrawableChild(amd);
         ButtonWidget intel = ButtonWidget.builder(cpuButtonText("intel", "openpc.ui.cpu_type_intel"), b -> {
             working.setCpuType("intel");
             commitDraft();
-        }).dimensions(x + hostW + amdW + 8, y, intelW, 12).build();
+        }).dimensions(xs + 2 * (bw + 4), layoutCpuY, iw - 2 * (bw + 4), 12).build();
         intel.active = !sending;
         addDrawableChild(intel);
     }
@@ -361,150 +396,191 @@ public class PcBuilderScreen extends Screen {
 
     private void buildOpenCaseButtons() {
         nameField = null;
+        openSections.clear();
+        int closeW = Math.min(112, Math.max(90, textRenderer.getWidth(Text.translatable("openpc.ui.close_case")) + 12));
+        ButtonWidget close = ButtonWidget.builder(Text.translatable("openpc.ui.close_case"), b -> {
+            openCase = false;
+            buttonSignature = Integer.MIN_VALUE;
+        }).dimensions(width - closeW - 12, 8, closeW, 12).build();
+        addDrawableChild(close);
         int cx = viewX + viewW / 2;
-        int cy = viewY + viewH / 2;
 
         if (working.motherboardId() == null) {
-            int y = cy - 20;
+            openSections.add(new OpenSection(cx - 70, viewY + 26, Text.translatable("openpc.ui.section_motherboard")));
+            int y = viewY + 40;
             for (HardwareDefinition definition : HardwareRegistry.ofCategory(HardwareCategory.MOTHERBOARD)) {
-                addInstallButton(cx - 70, y, 140, definition, () -> installMotherboard(definition));
-                y += 14;
+                if (y > viewY + viewH - 16) {
+                    break;
+                }
+                if (addInstallButton(cx - 100, y, 200, definition, () -> installMotherboard(definition))) {
+                    y += 14;
+                }
             }
             return;
         }
 
-        addRemoveButton(cx - 80, cy - 78, working.motherboardId(), this::removeMotherboard);
+        int colW = Math.min(160, Math.max(130, (viewW - 56) / 2));
+        int leftX = viewX + 12;
+        int rightX = viewX + viewW - 12 - colW;
+        int bottomLimit = viewY + viewH - 16;
 
-        if (working.cpuId() == null) {
-            int y = cy - 40;
-            for (HardwareDefinition definition : HardwareRegistry.ofCategory(HardwareCategory.CPU)) {
-                addInstallButton(cx - 150, y, 120, definition, () -> installSingle(HardwareCategory.CPU, definition));
+        int leftY = viewY + 14;
+        leftY = addPartRow(leftY, leftX, colW, bottomLimit,
+                working.motherboardId(), this::removeMotherboard,
+                HardwareCategory.MOTHERBOARD, def -> installMotherboard(def));
+        leftY = addPartRow(leftY, leftX, colW, bottomLimit,
+                working.cpuId(), () -> clearSlot(HardwareCategory.CPU),
+                HardwareCategory.CPU, def -> installSingle(HardwareCategory.CPU, def));
+        leftY = addRamRows(leftY, leftX, colW, bottomLimit);
+        leftY = addPartRow(leftY, leftX, colW, bottomLimit,
+                working.storageId(), () -> clearSlot(HardwareCategory.STORAGE),
+                HardwareCategory.STORAGE, def -> installSingle(HardwareCategory.STORAGE, def));
+
+        int rightY = viewY + 14;
+        rightY = addPartRow(rightY, rightX, colW, bottomLimit,
+                working.gpuId(), () -> clearSlot(HardwareCategory.GPU),
+                HardwareCategory.GPU, def -> installSingle(HardwareCategory.GPU, def));
+        rightY = addPartRow(rightY, rightX, colW, bottomLimit,
+                working.audioId(), () -> clearSlot(HardwareCategory.AUDIO),
+                HardwareCategory.AUDIO, def -> installSingle(HardwareCategory.AUDIO, def));
+        rightY = addPartRow(rightY, rightX, colW, bottomLimit,
+                working.networkId(), () -> clearSlot(HardwareCategory.NETWORK),
+                HardwareCategory.NETWORK, def -> installSingle(HardwareCategory.NETWORK, def));
+        rightY = addPartRow(rightY, rightX, colW, bottomLimit,
+                working.opticalId(), () -> clearSlot(HardwareCategory.OPTICAL),
+                HardwareCategory.OPTICAL, def -> installSingle(HardwareCategory.OPTICAL, def));
+        rightY = addPartRow(rightY, rightX, colW, bottomLimit,
+                working.floppyId(), () -> clearSlot(HardwareCategory.FLOPPY),
+                HardwareCategory.FLOPPY, def -> installSingle(HardwareCategory.FLOPPY, def));
+        rightY = addExpansionRows(rightY, rightX, colW, bottomLimit);
+    }
+
+    private int addPartRow(int y, int x, int w, int bottomLimit,
+                           String installedId, Runnable remove,
+                           HardwareCategory category, java.util.function.Consumer<HardwareDefinition> install) {
+        addHeader(x, y, sectionHeaderKey(category));
+        y += 11;
+        if (installedId != null) {
+            addRemoveChip(x, y, w, installedId, remove);
+            return y + 16;
+        }
+        for (HardwareDefinition definition : HardwareRegistry.ofCategory(category)) {
+            if (y > bottomLimit) {
+                break;
+            }
+            if (addInstallButton(x, y, w, definition, () -> install.accept(definition))) {
                 y += 14;
             }
-        } else {
-            addRemoveButton(cx - 48, cy - 20, working.cpuId(), () -> clearSlot(HardwareCategory.CPU));
         }
+        return y + 6;
+    }
 
-        if (working.gpuId() == null) {
-            int y = cy + 28;
-            for (HardwareDefinition definition : HardwareRegistry.ofCategory(HardwareCategory.GPU)) {
-                addInstallButton(cx - 80, y, 110, definition, () -> installSingle(HardwareCategory.GPU, definition));
-                y += 14;
-            }
-        } else {
-            addRemoveButton(cx - 70, cy + 40, working.gpuId(), () -> clearSlot(HardwareCategory.GPU));
-        }
-
-        if (working.storageId() == null) {
-            int y = cy + 36;
-            int x = cx + 24;
-            int col = 0;
-            for (HardwareDefinition definition : HardwareRegistry.ofCategory(HardwareCategory.STORAGE)) {
-                addInstallButton(x + col * 92, y, 88, definition, () -> installSingle(HardwareCategory.STORAGE, definition));
-                col++;
-                if (col >= 2) {
-                    col = 0;
-                    y += 14;
-                }
-            }
-        } else {
-            addRemoveButton(cx + 36, cy + 52, working.storageId(), () -> clearSlot(HardwareCategory.STORAGE));
-        }
-
-        int ramSlot = firstEmptyRamSlot();
-        if (ramSlot >= 0) {
-            int y = cy - 70;
-            for (HardwareDefinition definition : HardwareRegistry.ofCategory(HardwareCategory.RAM)) {
-                int slot = ramSlot;
-                addInstallButton(cx + 56, y, 110, definition, () -> installRam(slot, definition));
-                y += 14;
-            }
-        }
+    private int addRamRows(int y, int x, int w, int bottomLimit) {
+        addHeader(x, y, "openpc.ui.section_ram");
+        y += 11;
+        boolean installOffered = false;
         for (int i = 0; i < working.ramSlots().size(); i++) {
             String id = working.ramAt(i);
             if (id != null) {
+                if (y > bottomLimit) {
+                    break;
+                }
                 int slot = i;
-                addRemoveButton(cx + 24 + i * 16, cy - 78, id, () -> {
+                addRemoveChip(x, y, w, id, () -> {
                     working.removeRamAt(slot);
                     commitDraft();
                 });
+                y += 14;
+            } else if (!installOffered) {
+                addHeader(x, y, Text.translatable("openpc.ui.ram_slot", i + 1));
+                y += 11;
+                int slot = firstEmptyRamSlot();
+                for (HardwareDefinition definition : HardwareRegistry.ofCategory(HardwareCategory.RAM)) {
+                    if (y > bottomLimit) {
+                        break;
+                    }
+                    if (addInstallButton(x, y, w, definition, () -> installRam(slot, definition))) {
+                        y += 14;
+                    }
+                }
+                installOffered = true;
             }
         }
+        return y + 6;
+    }
 
-        int extraX = Math.min(width - 132, viewX + viewW + 8);
-        int extraY = viewY + 8;
-        extraY = addOptionalColumn(extraX, extraY, HardwareCategory.AUDIO, working.audioId(),
-                () -> clearSlot(HardwareCategory.AUDIO));
-        extraY = addOptionalColumn(extraX, extraY, HardwareCategory.NETWORK, working.networkId(),
-                () -> clearSlot(HardwareCategory.NETWORK));
-        extraY = addOptionalColumn(extraX, extraY, HardwareCategory.OPTICAL, working.opticalId(),
-                () -> clearSlot(HardwareCategory.OPTICAL));
-        extraY = addOptionalColumn(extraX, extraY, HardwareCategory.FLOPPY, working.floppyId(),
-                () -> clearSlot(HardwareCategory.FLOPPY));
-        extraY = addOptionalColumn(extraX, extraY, HardwareCategory.EXPANSION, null, null);
-        int expansionSlot = firstEmptyExpansionSlot();
-        if (expansionSlot >= 0) {
-            for (HardwareDefinition definition : HardwareRegistry.ofCategory(HardwareCategory.EXPANSION)) {
-                int slot = expansionSlot;
-                extraY = addInstallButton(extraX, extraY, 120, definition, () -> installExpansion(slot, definition)) ? extraY + 14 : extraY;
-            }
-        }
+    private int addExpansionRows(int y, int x, int w, int bottomLimit) {
+        addHeader(x, y, "openpc.ui.section_expansion");
+        y += 11;
+        boolean installOffered = false;
         for (int i = 0; i < working.expansionSlots().size(); i++) {
             String id = working.expansionAt(i);
             if (id != null) {
+                if (y > bottomLimit) {
+                    break;
+                }
                 int slot = i;
-                addRemoveButton(extraX, extraY, id, () -> {
+                addRemoveChip(x, y, w, id, () -> {
                     working.removeExpansionAt(slot);
                     commitDraft();
                 });
-                extraY += 14;
+                y += 14;
+            } else if (!installOffered) {
+                addHeader(x, y, Text.translatable("openpc.ui.expansion_slot", i + 1));
+                y += 11;
+                int slot = firstEmptyExpansionSlot();
+                for (HardwareDefinition definition : HardwareRegistry.ofCategory(HardwareCategory.EXPANSION)) {
+                    if (y > bottomLimit) {
+                        break;
+                    }
+                    if (addInstallButton(x, y, w, definition, () -> installExpansion(slot, definition))) {
+                        y += 14;
+                    }
+                }
+                installOffered = true;
             }
         }
+        return y + 6;
     }
 
-    private int addOptionalColumn(int x, int y, HardwareCategory category, String installedId, Runnable remove) {
-        if (installedId != null && remove != null) {
-            addRemoveButton(x, y, installedId, remove);
-            return y + 14;
-        }
-        if (installedId != null) {
-            return y;
-        }
-        for (HardwareDefinition definition : HardwareRegistry.ofCategory(category)) {
-            if (category == HardwareCategory.EXPANSION) {
-                continue;
-            }
-            if (addInstallButton(x, y, 120, definition, () -> installSingle(category, definition))) {
-                y += 14;
-            }
-        }
-        return y;
+    private void addHeader(int x, int y, String key) {
+        addHeader(x, y, Text.translatable(key));
+    }
+
+    private void addHeader(int x, int y, Text text) {
+        openSections.add(new OpenSection(x, y, text));
+    }
+
+    private static String sectionHeaderKey(HardwareCategory category) {
+        return switch (category) {
+            case MOTHERBOARD -> "openpc.ui.section_motherboard";
+            case CPU -> "openpc.ui.section_cpu";
+            case STORAGE -> "openpc.ui.section_storage";
+            case GPU -> "openpc.ui.section_gpu";
+            case AUDIO -> "openpc.ui.section_audio";
+            case NETWORK -> "openpc.ui.section_network";
+            case OPTICAL -> "openpc.ui.section_optical";
+            case FLOPPY -> "openpc.ui.section_floppy";
+            case EXPANSION -> "openpc.ui.section_expansion";
+            case RAM -> "openpc.ui.section_ram";
+        };
+    }
+
+    private void addRemoveChip(int x, int y, int width, String definitionId, Runnable action) {
+        addDrawableChild(ButtonWidget.builder(Text.literal("x"), b -> action.run())
+                .dimensions(x + width - 12, y, 12, 12)
+                .build());
+        installedLabels.add(new InstalledLabel(x, y + 3, definitionId));
     }
 
     private boolean addInstallButton(int x, int y, int width, HardwareDefinition definition, Runnable action) {
         if (!hasAvailableItem(definition)) {
             return false;
         }
-        ButtonWidget button = ButtonWidget.builder(Text.translatable(definition.translationKey()), b -> action.run())
+        addDrawableChild(ButtonWidget.builder(Text.translatable(definition.translationKey()), b -> action.run())
                 .dimensions(x, y, width, 12)
-                .build();
-        addDrawableChild(button);
-        Item item = OpenpcItems.forHardware(definition.id());
-        if (item != null) {
-            overlayIcons.add(new OverlayIcon(x - 18, y - 2, new ItemStack(item)));
-        }
+                .build());
         return true;
-    }
-
-    private void addRemoveButton(int x, int y, String definitionId, Runnable action) {
-        ButtonWidget button = ButtonWidget.builder(Text.literal("x"), b -> action.run())
-                .dimensions(x, y, 10, 10)
-                .build();
-        addDrawableChild(button);
-        Item item = OpenpcItems.forHardware(definitionId);
-        if (item != null) {
-            overlayIcons.add(new OverlayIcon(x + 12, y - 3, new ItemStack(item)));
-        }
     }
 
     private void installMotherboard(HardwareDefinition definition) {
@@ -706,12 +782,32 @@ public class PcBuilderScreen extends Screen {
         int bottom = colorWithAlpha(0x000000, 0.55f * introScale);
         context.fillGradient(0, 0, width, height, top, bottom);
         renderScene(context);
+        drawBuilderPanels(context);
         super.render(context, mouseX, mouseY, tickDelta);
         drawHud(context);
         for (OverlayIcon icon : overlayIcons) {
             context.drawItem(icon.stack(), icon.x(), icon.y());
         }
         drawInstalledLabels(context);
+    }
+
+    private void drawBuilderPanels(DrawContext context) {
+        if (!openCase) {
+            int top = viewY;
+            int bot = height - 28;
+            context.fill(layoutSideX, top, layoutSideX + layoutSideW, bot, colorWithAlpha(0x10151B, 0.95f));
+            context.fill(layoutSideX, top, layoutSideX + 2, bot, 0xFF3A6EA5);
+            int[] bounds = {layoutFieldY - 3, layoutPowerY - 3, layoutOpenY - 3, layoutCpuY - 3, layoutMediaY - 3, layoutCompTextY - 3};
+            for (int yy : bounds) {
+                context.fill(layoutSideX + 8, yy, layoutSideX + layoutSideW - 6, yy + 1, colorWithAlpha(0xFFFFFF, 0.06f));
+            }
+        }
+        context.fill(0, height - 27, width, height, colorWithAlpha(0x0A0E13, 0.92f));
+        context.fill(0, height - 28, width, height - 27, 0xFF3A6EA5);
+        context.fill(viewX - 2, viewY - 2, viewX + viewW + 2, viewY - 1, 0xFF335577);
+        context.fill(viewX - 2, viewY + viewH + 1, viewX + viewW + 2, viewY + viewH + 2, 0xFF335577);
+        context.fill(viewX - 2, viewY - 2, viewX - 1, viewY + viewH + 2, 0xFF335577);
+        context.fill(viewX + viewW + 1, viewY - 2, viewX + viewW + 2, viewY + viewH + 2, 0xFF335577);
     }
 
     private void renderScene(DrawContext context) {
@@ -734,58 +830,136 @@ public class PcBuilderScreen extends Screen {
         context.drawTexture(RenderPipelines.GUI, sceneTextureId, viewX, viewY, 0, 0, viewW, viewH, viewW, viewH);
     }
 
-    private void drawHud(DrawContext context) {
-        context.drawTextWithShadow(textRenderer, Text.translatable("openpc.ui.close_hint"), 4, 4, 0xFFFFFF);
-        if (openCase) {
-            context.drawTextWithShadow(textRenderer, Text.translatable("openpc.ui.put_panel_back"), 4, 16, 0xFFFFFF);
-        } else {
-            if (working.isoFileName() == null) {
-                context.drawTextWithShadow(textRenderer, Text.translatable("openpc.ui.select_iso"), viewX, viewY - 12, 0xFFFFFF);
-            } else {
-                context.drawTextWithShadow(textRenderer, Text.translatable("openpc.ui.inserted_iso", working.isoFileName()), viewX, viewY - 12, 0xAAAAAA);
-            }
-            context.drawTextWithShadow(textRenderer, Text.translatable("openpc.ui.cpu_type"), viewX + 4, viewY + viewH - 14, 0xFFFFFF);
-            context.drawTextWithShadow(textRenderer, Text.translatable("openpc.ui.pc_name"), viewX + 4, viewY + viewH - 46, 0xFFFFFF);
-        }
-
-        if (lastSendFailed) {
-            context.drawTextWithShadow(textRenderer, Text.translatable("openpc.error.edit_rejected"), 4, height - 24, 0xFF7777);
-        }
-        List<Text> errors = currentValidation == null ? List.of() : currentValidation.errors();
-        int errY = height - 36 - Math.min(4, errors.size()) * 10;
-        for (int i = 0; i < Math.min(4, errors.size()); i++) {
-            context.drawTextWithShadow(textRenderer, errors.get(i), 4, errY + i * 10, 0xFF8888);
-        }
-    }
-
-    private void drawInstalledLabels(DrawContext context) {
-        if (!openCase || working.motherboardId() == null) {
-            return;
-        }
-        int cx = viewX + viewW / 2;
-        int cy = viewY + viewH / 2;
-        drawPartName(context, working.motherboardId(), cx - 66, cy - 58);
-        drawPartName(context, working.cpuId(), cx - 24, cy);
-        drawPartName(context, working.storageId(), cx + 48, cy + 64);
+    private List<Text> componentLabels() {
+        List<Text> lines = new ArrayList<>();
+        componentLine(lines, "openpc.category.motherboard", working.motherboardId());
+        componentLine(lines, "openpc.category.cpu", working.cpuId());
+        List<String> ram = new ArrayList<>();
         for (int i = 0; i < working.ramSlots().size(); i++) {
             String id = working.ramAt(i);
+            if (id == null) {
+                continue;
+            }
+            HardwareDefinition def = HardwareRegistry.find(id).orElse(null);
+            if (def == null) {
+                continue;
+            }
+            long mb = def.getLong(dev.redstone.openpc.hardware.HardwareDefinitions.PROP_CAPACITY_MB, 0);
+            ram.add(Text.translatable(def.translationKey()).getString()
+                    + " (" + (mb >= 1024 ? (mb / 1024) + " GB" : mb + " MB") + ")");
+        }
+        componentLine(lines, "openpc.category.ram", ram);
+        componentLine(lines, "openpc.category.storage", storageDescription());
+        componentLine(lines, "openpc.category.gpu", working.gpuId());
+        componentLine(lines, "openpc.category.audio", working.audioId());
+        componentLine(lines, "openpc.category.network", working.networkId());
+        componentLine(lines, "openpc.category.optical", working.opticalId());
+        componentLine(lines, "openpc.category.floppy", working.floppyId());
+        List<String> expansion = new ArrayList<>();
+        for (int i = 0; i < working.expansionSlots().size(); i++) {
+            String id = working.expansionAt(i);
             if (id != null) {
-                HardwareDefinition ram = HardwareRegistry.find(id).orElse(null);
-                if (ram != null) {
-                    long mb = ram.getLong(dev.redstone.openpc.hardware.HardwareDefinitions.PROP_CAPACITY_MB, 0);
-                    String label = mb >= 1024 ? (mb / 1024) + " GB" : mb + " MB";
-                    context.drawTextWithShadow(textRenderer, Text.literal(label), cx + 28 + i * 28, cy, 0xFFFFFF);
-                }
+                expansion.add(id);
             }
         }
+        componentLine(lines, "openpc.category.expansion", expansion);
+        return lines;
     }
 
-    private void drawPartName(DrawContext context, String definitionId, int x, int y) {
+    private String storageDescription() {
+        if (working.storageId() == null) {
+            return null;
+        }
+        HardwareDefinition def = HardwareRegistry.find(working.storageId()).orElse(null);
+        if (def == null) {
+            return null;
+        }
+        long mb = working.installedStorageMegabytes();
+        return Text.translatable(def.translationKey()).getString()
+                + " (" + (mb >= 1024 ? (mb / 1024) + " GB" : mb + " MB") + ")";
+    }
+
+    private void componentLine(List<Text> lines, String categoryKey, String definitionId) {
         if (definitionId == null) {
             return;
         }
-        HardwareRegistry.find(definitionId).ifPresent(definition ->
-                context.drawTextWithShadow(textRenderer, Text.translatable(definition.translationKey()), x, y, 0xFFFFFF));
+        componentLine(lines, categoryKey, java.util.List.of(definitionId));
+    }
+
+    private void componentLine(List<Text> lines, String categoryKey, List<String> ids) {
+        List<String> names = new ArrayList<>();
+        for (String id : ids) {
+            if (id == null) {
+                continue;
+            }
+            HardwareDefinition def = HardwareRegistry.find(id).orElse(null);
+            if (def != null) {
+                names.add(Text.translatable(def.translationKey()).getString());
+            }
+        }
+        if (names.isEmpty()) {
+            return;
+        }
+        lines.add(Text.translatable(categoryKey)
+                .append(Text.literal(": "))
+                .append(Text.literal(String.join(", ", names))));
+    }
+
+    private void drawHud(DrawContext context) {
+        context.drawTextWithShadow(textRenderer, Text.translatable("openpc.ui.builder_header"), 12, 10, 0xFFFFFF);
+        if (openCase) {
+            for (OpenSection section : openSections) {
+                context.drawTextWithShadow(textRenderer, section.text(), section.x(), section.y(), 0xFF8FC7FF);
+            }
+            context.drawTextWithShadow(textRenderer, Text.translatable("openpc.ui.put_panel_back"), 12, 24, 0x80909B);
+        } else {
+            int xs = layoutSideX + 10;
+            int accent = 0xFF8FC7FF;
+            context.drawTextWithShadow(textRenderer, Text.translatable("openpc.ui.section_name"), xs, layoutFieldY - 11, accent);
+            context.drawTextWithShadow(textRenderer, Text.translatable("openpc.ui.section_power"), xs, layoutPowerY - 13, accent);
+            context.drawTextWithShadow(textRenderer, Text.translatable("openpc.ui.section_cpu"), xs, layoutCpuY - 13, accent);
+            context.drawTextWithShadow(textRenderer, Text.translatable("openpc.ui.section_media"), xs, layoutMediaY - 13, accent);
+            context.drawTextWithShadow(textRenderer, Text.translatable("openpc.ui.section_installed"), xs, layoutCompTextY - 13, accent);
+            context.drawTextWithShadow(textRenderer, Text.literal("PC-" + working.pcId()), 12, 24, 0x80909B);
+
+            List<Text> labels = componentLabels();
+            for (int i = 0; i < Math.min(labels.size(), layoutCompLines); i++) {
+                context.drawTextWithShadow(textRenderer, labels.get(i), xs, layoutCompTextY + i * 9, 0xFFFFFF);
+            }
+        }
+
+        if (lastSendFailed) {
+            context.drawTextWithShadow(textRenderer, Text.translatable("openpc.error.edit_rejected"), 12, height - 20, 0xFF7777);
+        }
+        List<Text> errors = currentValidation == null ? List.of() : currentValidation.errors();
+        int errY = height - 34 - Math.min(4, errors.size()) * 10;
+        for (int i = 0; i < Math.min(4, errors.size()); i++) {
+            context.drawTextWithShadow(textRenderer, errors.get(i), 12, errY + i * 10, 0xFF8888);
+        }
+        Text close = Text.translatable("openpc.ui.close_hint");
+        context.drawTextWithShadow(textRenderer, close, width - textRenderer.getWidth(close) - 12, height - 20, 0x60707B);
+    }
+
+    private void drawInstalledLabels(DrawContext context) {
+        for (InstalledLabel label : installedLabels) {
+            HardwareRegistry.find(label.definitionId()).ifPresent(definition -> {
+                String name = Text.translatable(definition.translationKey()).getString();
+                context.drawTextWithShadow(textRenderer, Text.literal(fitLabel(name, width - label.x() - 4)), label.x(), label.y(), 0xFFFFFF);
+            });
+        }
+    }
+
+    private String fitLabel(String label, int maxWidth) {
+        if (textRenderer.getWidth(label) <= maxWidth) {
+            return label;
+        }
+        String ellipsis = "...";
+        String tail = ellipsis;
+        int index = label.length() - 1;
+        while (index >= 0 && textRenderer.getWidth(ellipsis + label.substring(index)) > maxWidth) {
+            index--;
+        }
+        return ellipsis + label.substring(Math.max(0, index + 1));
     }
 
     private static int colorWithAlpha(int rgb, float alpha) {
@@ -810,6 +984,12 @@ public class PcBuilderScreen extends Screen {
     }
 
     private record OverlayIcon(int x, int y, ItemStack stack) {
+    }
+
+    private record InstalledLabel(int x, int y, String definitionId) {
+    }
+
+    private record OpenSection(int x, int y, Text text) {
     }
 
     @Override

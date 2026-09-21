@@ -38,9 +38,7 @@ public final class PcValidation {
             validateRam(result, config, motherboard);
         }
 
-        if (config.storageId() == null) {
-            result.error(Text.translatable("openpc.error.missing_storage"));
-        } else {
+        if (config.storageId() != null) {
             HardwareDefinition storage = HardwareRegistry.find(config.storageId()).orElse(null);
             if (storage == null) {
                 result.error(Text.translatable("openpc.error.unknown_storage", config.storageId()));
