@@ -22,7 +22,10 @@ public final class QemuArguments {
 
         HardwareDefinition cpu = HardwareRegistry.find(config.cpuId()).orElse(null);
         int cores = cpu == null ? 1 : Math.max(1, cpu.getInt(HardwareDefinitions.PROP_CORES, 1));
-        String cpuModel = cpu == null ? "host" : cpu.getProperty(HardwareDefinitions.PROP_QEMU_MODEL, "host");
+
+        // threads acts strictly as a Hyper-Threading / SMT multiplier per core (1 or 2)
+        int threads = cpu == null ? 1 : Math.min(2, Math.max(1, cpu.getInt(HardwareDefinitions.PROP_THREADS, 1)));
+        String cpuModel = cpuModel(config, cpu);
         long ramMb = Math.max(128, config.installedRamMegabytes());
 
         args.add("-machine");
@@ -30,12 +33,15 @@ public final class QemuArguments {
         args.add("-cpu");
         args.add(cpuModel);
         args.add("-smp");
-        args.add("cores=" + cores);
+        args.add("cores=" + cores + ",threads=" + threads);
         args.add("-m");
         args.add(Long.toString(ramMb));
         if (QemuEnvironment.detectOs() == QemuEnvironment.Os.LINUX) {
             args.add("-accel");
             args.add("kvm");
+        } else if (QemuEnvironment.detectOs() == QemuEnvironment.Os.WINDOWS) {
+            args.add("-accel");
+            args.add("whpx");
         }
         boolean hasIso = false;
         Path iso = PcDataStore.isoFile(config.isoFileName());
@@ -54,17 +60,31 @@ public final class QemuArguments {
         if (hasIso) {
             args.add("-drive");
             args.add("file=" + iso.toAbsolutePath() + ",format=raw,media=cdrom,index=1,readonly=on");
-        } else if (config.opticalId() != null) {
-            PcDataStore.ensureOpticalImage(config.pcId());
+        }
+
+        if (config.opticalId() != null) {
+            int index = hasIso ? 2 : 1;
+            Path cdrom = PcDataStore.isoFile(config.cdromFileName());
+            String media = cdrom != null && Files.isRegularFile(cdrom)
+                    ? cdrom.toAbsolutePath().toString()
+                    : PcDataStore.opticalFile(config.pcId()).toAbsolutePath().toString();
+            if (cdrom == null || !Files.isRegularFile(cdrom)) {
+                PcDataStore.ensureOpticalImage(config.pcId());
+            }
             args.add("-drive");
-            args.add("file=" + PcDataStore.opticalFile(config.pcId()).toAbsolutePath()
-                    + ",format=raw,media=cdrom,index=1,readonly=on");
+            args.add("file=" + media + ",format=raw,media=cdrom,index=" + index + ",readonly=on");
         }
 
         if (config.floppyId() != null) {
-            PcDataStore.ensureFloppyImage(config.pcId());
-            args.add("-fda");
-            args.add(PcDataStore.floppyFile(config.pcId()).toAbsolutePath().toString());
+            Path floppy = PcDataStore.floppyMediaFile(config.floppyFileName());
+            String floppyMedia = floppy != null && Files.isRegularFile(floppy)
+                    ? floppy.toAbsolutePath().toString()
+                    : PcDataStore.floppyFile(config.pcId()).toAbsolutePath().toString();
+            if (floppy == null || !Files.isRegularFile(floppy)) {
+                PcDataStore.ensureFloppyImage(config.pcId());
+            }
+            args.add("-drive");
+            args.add("file=" + floppyMedia + ",format=raw,if=floppy,index=0,media=disk");
         }
 
         boolean hasNetwork = config.networkId() != null || hasIntegrated(config, HardwareDefinitions.PROP_INTEGRATED_NETWORK);
@@ -124,7 +144,7 @@ public final class QemuArguments {
                 args.add("-chardev");
                 args.add("null,id=parallel" + expansion);
                 args.add("-device");
-                args.add("pci-parallel,chardev=parallel" + expansion);
+                args.add("isa-parallel,chardev=parallel" + expansion);
             } else {
                 args.add("-device");
                 args.add(device);
@@ -132,6 +152,19 @@ public final class QemuArguments {
         }
 
         return args;
+    }
+
+    private static String cpuModel(PcConfig config, HardwareDefinition cpu) {
+        String type = config.cpuType();
+        if (type.equals("amd")) {
+            // Safe, optimized AMD baseline setup
+            return "EPYC,vendor=AuthenticAMD,+kvm_pv_unhalt,+kvm_pv_eoi,+hypervisor";
+        }
+        if (type.equals("intel")) {
+            // Strict Intel Skylake layout, vendor masked Intel, contradicting AMD page structures explicitly disabled
+            return "Skylake-Client,vendor=GenuineIntel,+hypervisor,+invtsc,-vme,-pdpe1gb,check";
+        }
+        return cpu == null ? "host" : cpu.getProperty(HardwareDefinitions.PROP_QEMU_MODEL, "host");
     }
 
     public static int vncDisplayFor(long pcId) {

@@ -1,6 +1,5 @@
 package dev.redstone.openpc.client.gui;
 
-import dev.redstone.openpc.client.OpenpcQemuRuntime;
 import dev.redstone.openpc.client.PcClientController;
 import dev.redstone.openpc.client.QemuArguments;
 import dev.redstone.openpc.client.vnc.GlfwKeyMapping;
@@ -21,8 +20,6 @@ import net.minecraft.util.Identifier;
 import net.minecraft.util.math.BlockPos;
 import org.lwjgl.glfw.GLFW;
 
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -121,13 +118,6 @@ public class RunningPcScreen extends Screen {
         int port = QemuArguments.vncPortFor(pcId);
         VncClient client = new VncClient("127.0.0.1", port);
         client.setFrameListener(ignored -> frameArrived());
-        Path marker = OpenpcQemuRuntime.dataRoot().getParent().resolve("debug-frames.txt");
-        boolean capture = System.getProperty("openpc.debugFrames") != null
-                || Files.isRegularFile(marker)
-                || net.fabricmc.loader.api.FabricLoader.getInstance().isDevelopmentEnvironment();
-        if (capture) {
-            client.enableDebugCapture();
-        }
         client.start();
         this.vnc = client;
     }

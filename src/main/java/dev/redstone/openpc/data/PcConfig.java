@@ -10,6 +10,7 @@ import java.util.List;
 public final class PcConfig {
 
     private final long pcId;
+    private String name;
     private String motherboardId;
     private String cpuId;
     private final List<String> ramSlots;
@@ -21,6 +22,9 @@ public final class PcConfig {
     private String floppyId;
     private final List<String> expansionSlots;
     private String isoFileName;
+    private String cdromFileName;
+    private String floppyFileName;
+    private String cpuType;
     private PcPowerState powerState;
 
     public PcConfig(long pcId) {
@@ -28,6 +32,7 @@ public final class PcConfig {
         this.ramSlots = new ArrayList<>();
         this.expansionSlots = new ArrayList<>();
         this.powerState = PcPowerState.OFF;
+        this.cpuType = "host";
     }
 
     public PcConfig copy() {
@@ -47,6 +52,10 @@ public final class PcConfig {
         copy.floppyId = floppyId;
         copy.expansionSlots.addAll(expansionSlots);
         copy.isoFileName = isoFileName;
+        copy.cdromFileName = cdromFileName;
+        copy.floppyFileName = floppyFileName;
+        copy.cpuType = cpuType;
+        copy.name = name;
         copy.powerState = powerState;
         return copy;
     }
@@ -199,23 +208,69 @@ public final class PcConfig {
     }
 
     public void setIsoFileName(String isoFileName) {
-        if (isoFileName == null || isoFileName.isBlank()) {
-            this.isoFileName = null;
+        this.isoFileName = mediaFileName(isoFileName, ".iso");
+    }
+
+    public String cdromFileName() {
+        return cdromFileName;
+    }
+
+    public void setCdromFileName(String cdromFileName) {
+        this.cdromFileName = mediaFileName(cdromFileName, ".iso");
+    }
+
+    public String floppyFileName() {
+        return floppyFileName;
+    }
+
+    public void setFloppyFileName(String floppyFileName) {
+        this.floppyFileName = mediaFileName(floppyFileName, ".img");
+    }
+
+    public String cpuType() {
+        return cpuType == null ? "host" : cpuType;
+    }
+
+    public void setCpuType(String cpuType) {
+        if (cpuType == null || cpuType.isBlank()) {
+            this.cpuType = "host";
             return;
+        }
+        String type = cpuType.trim().toLowerCase(java.util.Locale.ROOT);
+        this.cpuType = switch (type) {
+            case "amd", "intel" -> type;
+            default -> "host";
+        };
+    }
+
+    public String name() {
+        return name;
+    }
+
+    public void setName(String name) {
+        if (name == null) {
+            this.name = null;
+            return;
+        }
+        String trimmed = name.trim();
+        this.name = trimmed.isBlank() ? null : trimmed.substring(0, Math.min(trimmed.length(), 32));
+    }
+
+    private static String mediaFileName(String value, String extension) {
+        if (value == null || value.isBlank()) {
+            return null;
         }
         Path path;
         try {
-            path = Path.of(isoFileName).toAbsolutePath().normalize();
+            path = Path.of(value).toAbsolutePath().normalize();
         } catch (RuntimeException ignored) {
-            this.isoFileName = null;
-            return;
+            return null;
         }
         String fileName = path.getFileName() == null ? "" : path.getFileName().toString();
-        if (!fileName.toLowerCase(java.util.Locale.ROOT).endsWith(".iso")) {
-            this.isoFileName = null;
-            return;
+        if (!fileName.toLowerCase(java.util.Locale.ROOT).endsWith(extension)) {
+            return null;
         }
-        this.isoFileName = path.toString();
+        return path.toString();
     }
 
     public List<String> installedExpansionIds() {

@@ -51,7 +51,7 @@ public final class HardwareDefinitions {
     private static void registerMotherboards() {
         HardwareRegistry.register(HardwareDefinition.of("motherboard_1", MOTHERBOARD, "", "motherboard")
                 .property(PROP_RAM_SLOTS, 2)
-                .property(PROP_MAX_RAM_MB, 4096)
+                .property(PROP_MAX_RAM_MB, 65536)
                 .property(PROP_EXPANSION_SLOTS, 4)
                 .property(PROP_STORAGE_BAYS, 2)
                 .property(PROP_USB_PORTS, 2)
@@ -62,7 +62,7 @@ public final class HardwareDefinitions {
 
         HardwareRegistry.register(HardwareDefinition.of("motherboard_2", MOTHERBOARD, "", "motherboard")
                 .property(PROP_RAM_SLOTS, 4)
-                .property(PROP_MAX_RAM_MB, 16384)
+                .property(PROP_MAX_RAM_MB, 65536)
                 .property(PROP_EXPANSION_SLOTS, 6)
                 .property(PROP_STORAGE_BAYS, 4)
                 .property(PROP_USB_PORTS, 4)
@@ -86,31 +86,31 @@ public final class HardwareDefinitions {
     private static void registerCpus() {
         HardwareRegistry.register(HardwareDefinition.of("cpu_2core", CPU, "", "cpu")
                 .property(PROP_CORES, 2)
-                .property(PROP_THREADS, 2)
+                .property(PROP_THREADS, 1)
                 .property(PROP_ARCHITECTURE, "x86_64")
                 .property(PROP_QEMU_MODEL, "host"));
 
         HardwareRegistry.register(HardwareDefinition.of("cpu_4core", CPU, "", "cpu")
                 .property(PROP_CORES, 4)
-                .property(PROP_THREADS, 4)
+                .property(PROP_THREADS, 1)
                 .property(PROP_ARCHITECTURE, "x86_64")
                 .property(PROP_QEMU_MODEL, "host"));
 
         HardwareRegistry.register(HardwareDefinition.of("cpu_pro_2core", CPU, "", "cpu")
                 .property(PROP_CORES, 2)
-                .property(PROP_THREADS, 4)
+                .property(PROP_THREADS, 2)
                 .property(PROP_ARCHITECTURE, "x86_64")
                 .property(PROP_QEMU_MODEL, "host"));
 
         HardwareRegistry.register(HardwareDefinition.of("cpu_pro_4core", CPU, "", "cpu")
                 .property(PROP_CORES, 4)
-                .property(PROP_THREADS, 8)
+                .property(PROP_THREADS, 2)
                 .property(PROP_ARCHITECTURE, "x86_64")
                 .property(PROP_QEMU_MODEL, "host"));
 
         HardwareRegistry.register(HardwareDefinition.of("cpu_8core", CPU, "", "cpu")
                 .property(PROP_CORES, 8)
-                .property(PROP_THREADS, 8)
+                .property(PROP_THREADS, 2)
                 .property(PROP_ARCHITECTURE, "x86_64")
                 .property(PROP_QEMU_MODEL, "host"));
     }

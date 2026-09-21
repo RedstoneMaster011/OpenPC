@@ -19,7 +19,6 @@ import java.util.function.Consumer;
 public final class VncClient implements AutoCloseable {
 
     private static final int MAX_DISPLAY_DIMENSION = 8192;
-    private static final int MAX_DEBUG_FRAMES = 60;
 
     private final String host;
     private final int port;
@@ -30,8 +29,6 @@ public final class VncClient implements AutoCloseable {
     private volatile int[] pixels = new int[0];
     private volatile boolean firstFrame;
     private final AtomicBoolean framePending = new AtomicBoolean(false);
-    private final AtomicBoolean debugCapture = new AtomicBoolean(false);
-    private volatile int debugFramesLeft;
     private volatile Consumer<VncClient> frameListener;
     private Socket socket;
     private DataInputStream in;
@@ -80,49 +77,7 @@ public final class VncClient implements AutoCloseable {
         return host + ":" + port;
     }
 
-    public void enableDebugCapture() {
-        debugCapture.set(true);
-        debugFramesLeft = MAX_DEBUG_FRAMES;
-    }
-
-    private String sampleReceived(int[] local, int w, int h) {
-        int len = w * h;
-        int first = local[0];
-        boolean allSame = true;
-        long white = 0;
-        long black = 0;
-        java.util.HashSet<Integer> seen = new java.util.HashSet<>();
-        java.util.LinkedHashSet<Integer> firstColors = new java.util.LinkedHashSet<>();
-        for (int i = 0; i < len; i++) {
-            int argb = local[i];
-            if (argb != first) {
-                allSame = false;
-            }
-            int r = (argb >> 16) & 0xff;
-            int g = (argb >> 8) & 0xff;
-            int b = argb & 0xff;
-            if (r > 0xf0 && g > 0xf0 && b > 0xf0) {
-                white++;
-            } else if (r < 0x10 && g < 0x10 && b < 0x10) {
-                black++;
-            }
-            seen.add(argb & 0xffffff);
-            if (firstColors.size() < 12) {
-                firstColors.add(argb & 0xffffff);
-            }
-        }
-        String colors = firstColors.stream().map(c -> String.format("#%06X", c))
-                .collect(java.util.stream.Collectors.joining(","));
-        return "size=" + w + "x" + h + " all_same=" + allSame
-                + " first=#" + String.format("%06X", first & 0xffffff)
-                + " white=" + (white * 100 / Math.max(1, len)) + "%"
-                + " black=" + (black * 100 / Math.max(1, len)) + "%"
-                + " distinct_colors=" + seen.size()
-                + " colors=(" + colors + ")";
-    }
-
     public void snapshotInto(NativeImage target) {
-        String report = null;
         synchronized (frameLock) {
             int w = width.get();
             int h = height.get();
@@ -139,13 +94,6 @@ public final class VncClient implements AutoCloseable {
             } catch (IllegalStateException e) {
                 // Image was closed, ignore
             }
-            if (debugCapture.get() && debugFramesLeft > 0) {
-                debugFramesLeft--;
-                report = sampleReceived(local, w, h);
-            }
-        }
-        if (report != null) {
-            OpenpcQemuRuntime.logInfo("VNC received #" + (MAX_DEBUG_FRAMES - debugFramesLeft) + ": " + report);
         }
     }
 

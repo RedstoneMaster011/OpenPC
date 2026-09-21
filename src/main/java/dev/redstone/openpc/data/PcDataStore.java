@@ -76,6 +76,65 @@ public final class PcDataStore {
         }
     }
 
+    public static Path floppyMediaFile(String path) {
+        if (path == null || path.isBlank()) {
+            return null;
+        }
+        try {
+            Path resolved = Path.of(path).toAbsolutePath().normalize();
+            String fileName = resolved.getFileName() == null ? "" : resolved.getFileName().toString();
+            if (!fileName.toLowerCase(java.util.Locale.ROOT).endsWith(".img")) {
+                return null;
+            }
+            return resolved;
+        } catch (RuntimeException ignored) {
+            return null;
+        }
+    }
+
+    public static java.util.List<Long> listPcIds() {
+        java.util.List<Long> ids = new java.util.ArrayList<>();
+        Path root = dataRoot();
+        if (!Files.isDirectory(root)) {
+            return ids;
+        }
+        try (java.util.stream.Stream<Path> entries = Files.list(root)) {
+            entries.forEach(entry -> {
+                if (!Files.isDirectory(entry)) {
+                    return;
+                }
+                String name = entry.getFileName() == null ? "" : entry.getFileName().toString();
+                if (!name.startsWith("pc_")) {
+                    return;
+                }
+                try {
+                    ids.add(Long.parseLong(name.substring(3)));
+                } catch (NumberFormatException ignored) {
+                }
+            });
+        } catch (IOException error) {
+            LOGGER.warn("Failed to list PCs in {}", root, error);
+        }
+        ids.sort(Long::compareTo);
+        return ids;
+    }
+
+    public static void deletePcDirectory(long pcId) throws IOException {
+        Path directory = pcDirectory(pcId);
+        if (!Files.exists(directory)) {
+            return;
+        }
+        try (java.util.stream.Stream<Path> walk = Files.walk(directory)) {
+            walk.sorted(java.util.Comparator.reverseOrder()).forEach(path -> {
+                try {
+                    Files.deleteIfExists(path);
+                } catch (IOException error) {
+                    LOGGER.warn("Failed to delete {} while removing pc_{}", path, pcId, error);
+                }
+            });
+        }
+    }
+
     public static long allocateUniquePcId() {
         Path file = dataRoot().resolve("pc_next_id.txt");
         long reserved = NEXT_ID_HINT.getAndIncrement();
@@ -95,6 +154,19 @@ public final class PcDataStore {
 
     public static void writeConfigMirrorAsync(long pcId, PcConfig config) {
         CompletableFuture.runAsync(() -> writeConfigMirrorQuietly(pcId, config));
+    }
+
+    public static PcConfig readConfigMirror(long pcId) {
+        try {
+            Path file = configFile(pcId);
+            if (!Files.isRegularFile(file)) {
+                return null;
+            }
+            return PcSerialization.decode(Files.readString(file));
+        } catch (IOException error) {
+            LOGGER.warn("Failed to read PC metadata for pc_{}", pcId, error);
+            return null;
+        }
     }
 
     public static void writeConfigMirror(long pcId, PcConfig config) {

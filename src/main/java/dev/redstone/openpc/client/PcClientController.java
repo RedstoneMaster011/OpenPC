@@ -1,6 +1,7 @@
 package dev.redstone.openpc.client;
 
 import dev.redstone.openpc.Openpc;
+import dev.redstone.openpc.client.gui.ManagePcsScreen;
 import dev.redstone.openpc.client.gui.PcBuilderScreen;
 import dev.redstone.openpc.client.gui.RunningPcScreen;
 import dev.redstone.openpc.client.net.OpenpcClientNetworking;
@@ -64,11 +65,20 @@ public final class PcClientController {
             runningScreen = null;
         }
 
-        if (builderScreen != null && builderScreen.posEquals(pos) && client.currentScreen == builderScreen) {
+        if (builderScreen != null && builderScreen.posEquals(pos)) {
             builderScreen.applySnapshot(config);
+            if (client.currentScreen == builderScreen) {
+                return;
+            }
+            if (!(client.currentScreen instanceof ManagePcsScreen)) {
+                client.setScreen(builderScreen);
+            }
             return;
         }
         builderScreen = new PcBuilderScreen(pos, config);
+        if (client.currentScreen instanceof ManagePcsScreen) {
+            return;
+        }
         client.setScreen(builderScreen);
     }
 
@@ -94,17 +104,32 @@ public final class PcClientController {
     private static void onQemuExit(long pcId, int exitCode) {
         MinecraftClient.getInstance().execute(() -> {
             PcConfig config = activeConfig;
-            if (config != null && config.pcId() == pcId) {
+            if (config == null || config.pcId() != pcId) {
+                return;
+            }
+            if (exitCode == 0) {
+                // Exit code 0 means the guest sent a reboot request: relaunch QEMU and reconnect.
+                Openpc.LOGGER.info("QEMU for pc_" + pcId + " exited with code 0; treating as reboot and relaunching");
+                ensureQemuRunning(config);
                 if (runningScreen != null && runningScreen.pcIdEquals(pcId)) {
                     runningScreen.beforeDispose();
                     runningScreen = null;
                 }
-                PcConfig updated = config.copy();
-                updated.setPowerState(PcPowerState.OFF);
-                activeConfig = updated;
                 if (activePos != null) {
-                    OpenpcClientNetworking.sendPower(activePos, false);
+                    runningScreen = new RunningPcScreen(activePos, config);
+                    MinecraftClient.getInstance().setScreen(runningScreen);
                 }
+                return;
+            }
+            if (runningScreen != null && runningScreen.pcIdEquals(pcId)) {
+                runningScreen.beforeDispose();
+                runningScreen = null;
+            }
+            PcConfig updated = config.copy();
+            updated.setPowerState(PcPowerState.OFF);
+            activeConfig = updated;
+            if (activePos != null) {
+                OpenpcClientNetworking.sendPower(activePos, false);
             }
         });
     }
@@ -112,6 +137,30 @@ public final class PcClientController {
     public static void onBuilderClosed(Screen screen) {
         if (builderScreen == screen) {
             builderScreen = null;
+        }
+    }
+
+    public static void onPcDeleted(long pcId) {
+        QemuProcessManager.requestStop(pcId);
+        MinecraftClient client = MinecraftClient.getInstance();
+        boolean active = activeConfig != null && activeConfig.pcId() == pcId;
+        if (runningScreen != null && runningScreen.pcIdEquals(pcId)) {
+            runningScreen.beforeDispose();
+            runningScreen = null;
+        }
+        if (builderScreen != null && active) {
+            builderScreen = null;
+        }
+        if (active) {
+            PcConfig updated = activeConfig.copy();
+            updated.setPowerState(PcPowerState.OFF);
+            activeConfig = updated;
+            if (activePos != null) {
+                OpenpcClientNetworking.sendPower(activePos, false);
+            }
+        }
+        if (active) {
+            client.execute(() -> client.setScreen(null));
         }
     }
 

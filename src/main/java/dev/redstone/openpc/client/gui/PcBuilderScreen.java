@@ -21,6 +21,7 @@ import net.minecraft.client.gui.Click;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.client.gui.widget.ButtonWidget;
+import net.minecraft.client.gui.widget.TextFieldWidget;
 import net.minecraft.client.texture.NativeImage;
 import net.minecraft.client.texture.NativeImageBackedTexture;
 import net.minecraft.item.Item;
@@ -48,6 +49,8 @@ public class PcBuilderScreen extends Screen {
     private boolean lastSendFailed;
     private boolean openCase;
     private boolean dragging;
+    private TextFieldWidget nameField;
+    private boolean nameFieldWasFocused;
 
     private final CaseCamera camera = new CaseCamera();
     private int viewX;
@@ -132,6 +135,16 @@ public class PcBuilderScreen extends Screen {
         int signature = computeButtonSignature();
         if (signature != buttonSignature) {
             rebuildButtons();
+            nameFieldWasFocused = false;
+        }
+        if (nameField != null) {
+            boolean focused = nameField.isFocused();
+            if (nameFieldWasFocused && !focused) {
+                commitPcName();
+            }
+            nameFieldWasFocused = focused;
+        } else {
+            nameFieldWasFocused = false;
         }
     }
 
@@ -148,6 +161,9 @@ public class PcBuilderScreen extends Screen {
         hash = 31 * hash + (working.floppyId() == null ? 0 : working.floppyId().hashCode());
         hash = 31 * hash + working.expansionSlots().hashCode();
         hash = 31 * hash + (working.isoFileName() == null ? 0 : working.isoFileName().hashCode());
+        hash = 31 * hash + (working.cdromFileName() == null ? 0 : working.cdromFileName().hashCode());
+        hash = 31 * hash + (working.floppyFileName() == null ? 0 : working.floppyFileName().hashCode());
+        hash = 31 * hash + (working.cpuType() == null ? 0 : working.cpuType().hashCode());
         hash = 31 * hash + inventoryFingerprint();
         hash = 31 * hash + (lastSendFailed ? 7 : 0);
         hash = 31 * hash + (sending ? 11 : 0);
@@ -193,8 +209,46 @@ public class PcBuilderScreen extends Screen {
         power.active = valid && !sending;
         addDrawableChild(power);
 
-        int isoW = Math.min(220, Math.max(120, viewW / 2));
-        addIsoButtons(viewX + viewW - isoW, viewY + 14, isoW);
+        int mediaW = Math.min(220, Math.max(120, viewW / 2));
+        int mediaX = viewX + viewW - mediaW;
+        int mediaY = viewY + 14;
+        mediaY = addMediaButton(mediaX, mediaY, mediaW, "openpc.ui.select_iso", "openpc.ui.eject_iso",
+                working.isoFileName(),
+                () -> openMediaPicker("openpc.ui.select_iso", "*.iso", "ISO images (*.iso)",
+                        path -> working.setIsoFileName(path)),
+                () -> {
+                    working.setIsoFileName(null);
+                    commitDraft();
+                });
+        if (working.opticalId() != null) {
+            mediaY = addMediaButton(mediaX, mediaY, mediaW, "openpc.ui.select_cdrom", "openpc.ui.eject_cdrom",
+                    working.cdromFileName(),
+                    () -> openMediaPicker("openpc.ui.select_cdrom", "*.iso", "ISO images (*.iso)",
+                            path -> working.setCdromFileName(path)),
+                    () -> {
+                        working.setCdromFileName(null);
+                        commitDraft();
+                    });
+        }
+        if (working.floppyId() != null) {
+            addMediaButton(mediaX, mediaY, mediaW, "openpc.ui.select_floppy", "openpc.ui.eject_floppy",
+                    working.floppyFileName(),
+                    () -> openMediaPicker("openpc.ui.select_floppy", "*.img", "Floppy images (*.img)",
+                            path -> working.setFloppyFileName(path)),
+                    () -> {
+                        working.setFloppyFileName(null);
+                        commitDraft();
+                    });
+        }
+
+        addCpuTypeButtons();
+
+        int nameW = Math.min(160, Math.max(110, viewW / 4));
+        nameField = new TextFieldWidget(textRenderer, viewX + 4, viewY + viewH - 34, nameW, 12, Text.translatable("openpc.ui.pc_name"));
+        nameField.setMaxLength(32);
+        nameField.setText(working.name() == null ? "" : working.name());
+        nameField.setPlaceholder(Text.literal("PC-" + working.pcId()));
+        addDrawableChild(nameField);
 
         int openW = Math.max(80, textRenderer.getWidth(Text.translatable("openpc.ui.open_case")) + 8);
         ButtonWidget open = ButtonWidget.builder(Text.translatable("openpc.ui.open_case"), b -> {
@@ -202,26 +256,68 @@ public class PcBuilderScreen extends Screen {
             buttonSignature = Integer.MIN_VALUE;
         }).dimensions(viewX + (viewW - openW) / 2, viewY + viewH + 6, openW, 12).build();
         addDrawableChild(open);
+
+        int manageW = Math.min(96, Math.max(88, textRenderer.getWidth(Text.translatable("openpc.ui.manage_pcs")) + 8));
+        ButtonWidget manage = ButtonWidget.builder(Text.translatable("openpc.ui.manage_pcs"), b -> {
+            commitPcName();
+            MinecraftClient.getInstance().setScreen(new ManagePcsScreen(this));
+        })
+                .dimensions(width - 96, height - 20, manageW, 12)
+                .build();
+        addDrawableChild(manage);
     }
 
-    private void addIsoButtons(int x, int y, int width) {
-        String isoPath = working.isoFileName();
-        Text label = isoPath == null
-                ? Text.translatable("openpc.ui.select_iso")
-                : Text.literal(shortenPath(isoPath, Math.max(64, width - 8)));
-        ButtonWidget select = ButtonWidget.builder(label, b -> openIsoPicker())
+    private int addMediaButton(int x, int y, int width, String selectKey, String ejectKey,
+                               String fileName, Runnable select, Runnable eject) {
+        Text label = fileName == null
+                ? Text.translatable(selectKey)
+                : Text.literal(shortenPath(fileName, Math.max(64, width - 8)));
+        ButtonWidget selectButton = ButtonWidget.builder(label, b -> select.run())
                 .dimensions(x, y, width, 12)
                 .build();
-        select.active = !sending;
-        addDrawableChild(select);
+        selectButton.active = !sending;
+        addDrawableChild(selectButton);
 
-        if (working.isoFileName() != null) {
-            int ejectW = Math.max(48, textRenderer.getWidth(Text.translatable("openpc.ui.eject_iso")) + 8);
-            addDrawableChild(ButtonWidget.builder(Text.translatable("openpc.ui.eject_iso"), b -> {
-                working.setIsoFileName(null);
-                commitDraft();
-            }).dimensions(x + width - ejectW, y + 14, ejectW, 12).build());
+        if (fileName != null) {
+            int ejectW = Math.max(48, textRenderer.getWidth(Text.translatable(ejectKey)) + 8);
+            addDrawableChild(ButtonWidget.builder(Text.translatable(ejectKey), b -> eject.run())
+                    .dimensions(x + width - ejectW, y + 14, ejectW, 12)
+                    .build());
         }
+        return y + 28;
+    }
+
+    private void addCpuTypeButtons() {
+        int labelW = textRenderer.getWidth(Text.translatable("openpc.ui.cpu_type"));
+        int y = viewY + viewH - 16;
+        int x = viewX + 4 + labelW + 4;
+        int hostW = Math.max(44, textRenderer.getWidth(Text.translatable("openpc.ui.cpu_type_host")) + 8);
+        int amdW = Math.max(44, textRenderer.getWidth(Text.translatable("openpc.ui.cpu_type_amd")) + 8);
+        int intelW = Math.max(48, textRenderer.getWidth(Text.translatable("openpc.ui.cpu_type_intel")) + 8);
+        ButtonWidget host = ButtonWidget.builder(cpuButtonText("host", "openpc.ui.cpu_type_host"), b -> {
+            working.setCpuType("host");
+            commitDraft();
+        }).dimensions(x, y, hostW, 12).build();
+        host.active = !sending;
+        addDrawableChild(host);
+        ButtonWidget amd = ButtonWidget.builder(cpuButtonText("amd", "openpc.ui.cpu_type_amd"), b -> {
+            working.setCpuType("amd");
+            commitDraft();
+        }).dimensions(x + hostW + 4, y, amdW, 12).build();
+        amd.active = !sending;
+        addDrawableChild(amd);
+        ButtonWidget intel = ButtonWidget.builder(cpuButtonText("intel", "openpc.ui.cpu_type_intel"), b -> {
+            working.setCpuType("intel");
+            commitDraft();
+        }).dimensions(x + hostW + amdW + 8, y, intelW, 12).build();
+        intel.active = !sending;
+        addDrawableChild(intel);
+    }
+
+    private Text cpuButtonText(String type, String key) {
+        return working.cpuType().equals(type)
+                ? Text.literal("> ").append(Text.translatable(key))
+                : Text.translatable(key);
     }
 
     private String shortenPath(String path, int maxWidth) {
@@ -236,33 +332,35 @@ public class PcBuilderScreen extends Screen {
         return ellipsis + path.substring(Math.min(path.length(), start + 1));
     }
 
-    private void openIsoPicker() {
+    private void openMediaPicker(String titleKey, String filter, String description,
+                                 java.util.function.Consumer<String> applyPath) {
         MinecraftClient client = MinecraftClient.getInstance();
         Thread picker = new Thread(() -> {
             String selected;
             try (MemoryStack stack = MemoryStack.stackPush()) {
                 PointerBuffer filters = stack.mallocPointer(1);
-                filters.put(0, stack.UTF8("*.iso"));
+                filters.put(0, stack.UTF8(filter));
                 selected = TinyFileDialogs.tinyfd_openFileDialog(
-                        Text.translatable("openpc.ui.select_iso").getString(),
+                        Text.translatable(titleKey).getString(),
                         null,
                         filters,
-                        "ISO images (*.iso)",
+                        description,
                         false);
             }
             if (selected != null && !selected.isBlank()) {
                 String normalized = java.nio.file.Path.of(selected).toAbsolutePath().normalize().toString();
                 client.execute(() -> {
-                    working.setIsoFileName(normalized);
+                    applyPath.accept(normalized);
                     commitDraft();
                 });
             }
-        }, "openpc-iso-picker");
+        }, "openpc-media-picker");
         picker.setDaemon(true);
         picker.start();
     }
 
     private void buildOpenCaseButtons() {
+        nameField = null;
         int cx = viewX + viewW / 2;
         int cy = viewY + viewH / 2;
 
@@ -513,7 +611,21 @@ public class PcBuilderScreen extends Screen {
         buttonSignature = Integer.MIN_VALUE;
     }
 
+    private void commitPcName() {
+        if (nameField == null) {
+            return;
+        }
+        String text = nameField.getText().trim();
+        String current = working.name();
+        if (text.equals(current == null ? "" : current)) {
+            return;
+        }
+        working.setName(text.isEmpty() ? null : text);
+        commitDraft();
+    }
+
     private void powerOn() {
+        commitPcName();
         PcValidationResult validation = PcValidation.validate(working);
         currentValidation = validation;
         if (!validation.isValid()) {
@@ -594,8 +706,8 @@ public class PcBuilderScreen extends Screen {
         int bottom = colorWithAlpha(0x000000, 0.55f * introScale);
         context.fillGradient(0, 0, width, height, top, bottom);
         renderScene(context);
-        drawHud(context);
         super.render(context, mouseX, mouseY, tickDelta);
+        drawHud(context);
         for (OverlayIcon icon : overlayIcons) {
             context.drawItem(icon.stack(), icon.x(), icon.y());
         }
@@ -626,10 +738,14 @@ public class PcBuilderScreen extends Screen {
         context.drawTextWithShadow(textRenderer, Text.translatable("openpc.ui.close_hint"), 4, 4, 0xFFFFFF);
         if (openCase) {
             context.drawTextWithShadow(textRenderer, Text.translatable("openpc.ui.put_panel_back"), 4, 16, 0xFFFFFF);
-        } else if (working.isoFileName() == null) {
-            context.drawTextWithShadow(textRenderer, Text.translatable("openpc.ui.select_iso"), viewX, viewY - 12, 0xFFFFFF);
         } else {
-            context.drawTextWithShadow(textRenderer, Text.translatable("openpc.ui.inserted_iso", working.isoFileName()), viewX, viewY - 12, 0xAAAAAA);
+            if (working.isoFileName() == null) {
+                context.drawTextWithShadow(textRenderer, Text.translatable("openpc.ui.select_iso"), viewX, viewY - 12, 0xFFFFFF);
+            } else {
+                context.drawTextWithShadow(textRenderer, Text.translatable("openpc.ui.inserted_iso", working.isoFileName()), viewX, viewY - 12, 0xAAAAAA);
+            }
+            context.drawTextWithShadow(textRenderer, Text.translatable("openpc.ui.cpu_type"), viewX + 4, viewY + viewH - 14, 0xFFFFFF);
+            context.drawTextWithShadow(textRenderer, Text.translatable("openpc.ui.pc_name"), viewX + 4, viewY + viewH - 46, 0xFFFFFF);
         }
 
         if (lastSendFailed) {
@@ -682,6 +798,12 @@ public class PcBuilderScreen extends Screen {
         if (openCase && (input.getKeycode() == GLFW.GLFW_KEY_RIGHT_CONTROL || input.getKeycode() == GLFW.GLFW_KEY_RIGHT_ALT)) {
             openCase = false;
             buttonSignature = Integer.MIN_VALUE;
+            return true;
+        }
+        if (nameField != null && nameField.isFocused()
+                && (input.getKeycode() == GLFW.GLFW_KEY_ENTER || input.getKeycode() == GLFW.GLFW_KEY_KP_ENTER)) {
+            commitPcName();
+            nameField.setFocused(false);
             return true;
         }
         return super.keyPressed(input);
