@@ -88,31 +88,31 @@ public final class HardwareDefinitions {
                 .property(PROP_CORES, 2)
                 .property(PROP_THREADS, 2)
                 .property(PROP_ARCHITECTURE, "x86_64")
-                .property(PROP_QEMU_MODEL, "qemu64"));
+                .property(PROP_QEMU_MODEL, "host"));
 
         HardwareRegistry.register(HardwareDefinition.of("cpu_4core", CPU, "", "cpu")
                 .property(PROP_CORES, 4)
                 .property(PROP_THREADS, 4)
                 .property(PROP_ARCHITECTURE, "x86_64")
-                .property(PROP_QEMU_MODEL, "qemu64"));
+                .property(PROP_QEMU_MODEL, "host"));
 
         HardwareRegistry.register(HardwareDefinition.of("cpu_pro_2core", CPU, "", "cpu")
                 .property(PROP_CORES, 2)
                 .property(PROP_THREADS, 4)
                 .property(PROP_ARCHITECTURE, "x86_64")
-                .property(PROP_QEMU_MODEL, "max"));
+                .property(PROP_QEMU_MODEL, "host"));
 
         HardwareRegistry.register(HardwareDefinition.of("cpu_pro_4core", CPU, "", "cpu")
                 .property(PROP_CORES, 4)
                 .property(PROP_THREADS, 8)
                 .property(PROP_ARCHITECTURE, "x86_64")
-                .property(PROP_QEMU_MODEL, "max"));
+                .property(PROP_QEMU_MODEL, "host"));
 
         HardwareRegistry.register(HardwareDefinition.of("cpu_8core", CPU, "", "cpu")
                 .property(PROP_CORES, 8)
                 .property(PROP_THREADS, 8)
                 .property(PROP_ARCHITECTURE, "x86_64")
-                .property(PROP_QEMU_MODEL, "max"));
+                .property(PROP_QEMU_MODEL, "host"));
     }
 
     private static void registerRam() {
@@ -160,7 +160,7 @@ public final class HardwareDefinitions {
     }
 
     private static void registerNetwork() {
-        HardwareRegistry.register(HardwareDefinition.of("network_card", NETWORK, "e1000", "pci_card"));
+        HardwareRegistry.register(HardwareDefinition.of("network_card", NETWORK, "e1000e", "pci_card"));
     }
 
     private static void registerOptical() {

@@ -23,6 +23,9 @@ import org.lwjgl.glfw.GLFW;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
 
 public class RunningPcScreen extends Screen {
 
@@ -37,6 +40,11 @@ public class RunningPcScreen extends Screen {
     private NativeImageBackedTexture displayTexture;
     private Identifier displayTextureId;
     private ButtonWidget powerOffButton;
+    private ButtonWidget pasteVmButton;
+    private final List<ButtonWidget> shortcutButtons = new ArrayList<>();
+    private boolean leftDown;
+    private int lastPointerX = -1;
+    private int lastPointerY = -1;
     private long connectionStartedAt;
     private String connectionError;
 
@@ -86,6 +94,22 @@ public class RunningPcScreen extends Screen {
                 .dimensions(width - 108, 8, 100, 20)
                 .build();
         addDrawableChild(powerOffButton);
+        this.pasteVmButton = ButtonWidget.builder(Text.translatable("openpc.ui.paste_vm"), b -> pasteVmClipboard())
+                .dimensions(width - 108, 32, 100, 20)
+                .build();
+        addDrawableChild(pasteVmButton);
+        addShortcutButton("Start", 0xFFEB);
+        addShortcutButton("Alt+F4", 0xFFE9, 0xFF14);
+        addShortcutButton("Ctrl+Alt+Del", 0xFFE3, 0xFFE9, 0xFFFF);
+        addShortcutButton("Alt+Tab", 0xFFE9, 0xFF09);
+        addShortcutButton("Ctrl+C", 0xFFE3, 0x63);
+        addShortcutButton("Ctrl+V", 0xFFE3, 0x76);
+        addShortcutButton("Ctrl+X", 0xFFE3, 0x78);
+        addShortcutButton("Ctrl+Z", 0xFFE3, 0x7A);
+        addShortcutButton("Ctrl+A", 0xFFE3, 0x61);
+        addShortcutButton("Ctrl+S", 0xFFE3, 0x73);
+        addShortcutButton("PrtScr", 0xFF61);
+        addShortcutButton("Esc", 0xFF1B);
         this.connectionStartedAt = System.currentTimeMillis();
         connectVnc();
     }
@@ -138,9 +162,18 @@ public class RunningPcScreen extends Screen {
             vnc.snapshotInto(displayImage);
             displayTexture.upload();
         }
+        if (vnc != null && vnc.hasFrame() && !leftDown) {
+            int[] p = currentPointerPos();
+            if (p != null && (p[0] != lastPointerX || p[1] != lastPointerY)) {
+                lastPointerX = p[0];
+                lastPointerY = p[1];
+                vnc.sendPointer(p[0], p[1], 0);
+            }
+        }
         if (vnc != null && !vnc.hasFrame() && System.currentTimeMillis() - connectionStartedAt > CONNECT_TIMEOUT_MS) {
             connectionError = "openpc.msg.vnc_timeout";
         }
+        refreshShortcutPositions();
     }
 
     private void requestPowerOff() {
@@ -149,6 +182,87 @@ public class RunningPcScreen extends Screen {
             beforeDispose();
             close();
         }
+    }
+
+    private void addShortcutButton(String label, int... keysyms) {
+        ButtonWidget button = ButtonWidget.builder(Text.literal(label), b -> sendChord(keysyms))
+                .dimensions(0, 0, 60, 18)
+                .build();
+        shortcutButtons.add(button);
+        addDrawableChild(button);
+    }
+
+    private void refreshShortcutPositions() {
+        int[] canvas = canvasSize();
+        if (canvas == null || shortcutButtons.isEmpty()) {
+            return;
+        }
+        int cw = canvas[2];
+        int ch = canvas[3];
+        int columns = 6;
+        int gap = 4;
+        int buttonWidth = Math.max(36, (cw - (columns - 1) * gap) / columns);
+        int x0 = (width - (columns * buttonWidth + (columns - 1) * gap)) / 2;
+        int y0 = canvasY() + ch + 6;
+        for (int i = 0; i < shortcutButtons.size(); i++) {
+            int row = i / columns;
+            int col = i % columns;
+            ButtonWidget button = shortcutButtons.get(i);
+            button.setX(x0 + col * (buttonWidth + gap));
+            button.setY(y0 + row * 20);
+            button.setWidth(buttonWidth);
+        }
+    }
+
+    private void sendChord(int... keysyms) {
+        if (vnc == null) {
+            return;
+        }
+        for (int keysym : keysyms) {
+            vnc.sendKey(keysym, true);
+        }
+        for (int i = keysyms.length - 1; i >= 0; i--) {
+            vnc.sendKey(keysyms[i], false);
+        }
+    }
+
+    private void pasteVmClipboard() {
+        if (vnc == null) {
+            return;
+        }
+        String text = MinecraftClient.getInstance().keyboard.getClipboard();
+        if (text == null || text.isEmpty()) {
+            return;
+        }
+        vnc.sendClientCutText(text);
+        typeText(text);
+    }
+
+    private void typeText(String text) {
+        int[] keysyms = new int[text.length()];
+        int count = 0;
+        for (int i = 0; i < text.length(); i++) {
+            int keysym = keysymFor(text.charAt(i));
+            if (keysym != 0) {
+                keysyms[count++] = keysym;
+            }
+        }
+        if (count > 0) {
+            vnc.sendKeySequence(Arrays.copyOf(keysyms, count));
+        }
+    }
+
+    private static int keysymFor(char c) {
+        if (c == '\n' || c == '\r') {
+            return 0xFF0D;
+        }
+        if (c == '\t') {
+            return 0xFF09;
+        }
+        if (c >= 0x20 && c <= 0x7E) {
+            return c;
+        }
+        return 0;
     }
 
     public void beforeDispose() {
@@ -210,6 +324,9 @@ public class RunningPcScreen extends Screen {
             default -> 0;
         };
         if (mask != 0) {
+            if (click.button() == 0) {
+                leftDown = true;
+            }
             sendPointer(click.x(), click.y(), mask);
             return true;
         }
@@ -222,6 +339,9 @@ public class RunningPcScreen extends Screen {
             return true;
         }
         if (vnc != null && vnc.hasFrame()) {
+            if (click.button() == 0) {
+                leftDown = false;
+            }
             sendPointer(click.x(), click.y(), 0);
             return true;
         }
@@ -249,22 +369,36 @@ public class RunningPcScreen extends Screen {
     }
 
     private void sendPointer(double mouseX, double mouseY, int buttonMask) {
-        int[] canvas = canvasSize();
-        if (canvas == null) {
+        int[] p = clampToCanvas(mouseX, mouseY);
+        if (p == null) {
             return;
+        }
+        vnc.sendPointer(p[0], p[1], buttonMask);
+        lastPointerX = p[0];
+        lastPointerY = p[1];
+    }
+
+    private int[] clampToCanvas(double mouseX, double mouseY) {
+        int[] canvas = canvasSize();
+        if (canvas == null || canvas[2] <= 0 || canvas[3] <= 0) {
+            return null;
         }
         int w = canvas[0];
         int h = canvas[1];
-        if (canvas[2] <= 0 || canvas[3] <= 0) {
-            return;
-        }
         int px = (int) Math.round(((mouseX - canvasX()) / (canvas[2])) * w);
         int py = (int) Math.round(((mouseY - canvasY()) / (canvas[3])) * h);
         if (px < 0) px = 0;
         if (py < 0) py = 0;
         if (px >= w) px = w - 1;
         if (py >= h) py = h - 1;
-        vnc.sendPointer(px, py, buttonMask);
+        return new int[]{px, py};
+    }
+
+    private int[] currentPointerPos() {
+        MinecraftClient client = MinecraftClient.getInstance();
+        double scaledX = client.mouse.getX() * client.getWindow().getScaledWidth() / (double) client.getWindow().getWidth();
+        double scaledY = client.mouse.getY() * client.getWindow().getScaledHeight() / (double) client.getWindow().getHeight();
+        return clampToCanvas(scaledX, scaledY);
     }
 
     private int[] canvasSize() {
@@ -276,7 +410,7 @@ public class RunningPcScreen extends Screen {
         if (w <= 0 || h <= 0) {
             return null;
         }
-        double scale = Math.min((width - 24) / (double) w, (height - 24) / (double) h);
+        double scale = Math.min((width - 24) / (double) w, (height - 24) / (double) h) * 0.85;
         int cw = (int) (w * scale);
         int ch = (int) (h * scale);
         return new int[]{w, h, cw, ch};

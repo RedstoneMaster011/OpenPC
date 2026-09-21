@@ -22,7 +22,7 @@ public final class QemuArguments {
 
         HardwareDefinition cpu = HardwareRegistry.find(config.cpuId()).orElse(null);
         int cores = cpu == null ? 1 : Math.max(1, cpu.getInt(HardwareDefinitions.PROP_CORES, 1));
-        String cpuModel = cpu == null ? "qemu64" : cpu.getProperty(HardwareDefinitions.PROP_QEMU_MODEL, "qemu64");
+        String cpuModel = cpu == null ? "host" : cpu.getProperty(HardwareDefinitions.PROP_QEMU_MODEL, "host");
         long ramMb = Math.max(128, config.installedRamMegabytes());
 
         args.add("-machine");
@@ -33,6 +33,10 @@ public final class QemuArguments {
         args.add("cores=" + cores);
         args.add("-m");
         args.add(Long.toString(ramMb));
+        if (QemuEnvironment.detectOs() == QemuEnvironment.Os.LINUX) {
+            args.add("-accel");
+            args.add("kvm");
+        }
         boolean hasIso = false;
         Path iso = PcDataStore.isoFile(config.isoFileName());
         if (iso != null && Files.isRegularFile(iso)) {
@@ -68,7 +72,7 @@ public final class QemuArguments {
             args.add("-netdev");
             args.add("user,id=net0");
             args.add("-device");
-            args.add("e1000,netdev=net0");
+            args.add("e1000e,netdev=net0");
         }
 
         boolean hasAudio = config.audioId() != null || hasIntegrated(config, HardwareDefinitions.PROP_INTEGRATED_AUDIO);
@@ -93,6 +97,10 @@ public final class QemuArguments {
             }
         }
 
+        args.add("-usb");
+        args.add("-device");
+        args.add("usb-tablet");
+
         args.add("-display");
         args.add("none");
         args.add("-vnc");
@@ -104,7 +112,7 @@ public final class QemuArguments {
                 continue;
             }
             String device = definition.qemuDevice();
-            if (device == null || device.isEmpty() || device.equals("e1000") || device.equals("AC97")) {
+            if (device == null || device.isEmpty() || device.equals("e1000") || device.equals("e1000e") || device.equals("AC97")) {
                 continue;
             }
             if (device.equals("pci-serial")) {

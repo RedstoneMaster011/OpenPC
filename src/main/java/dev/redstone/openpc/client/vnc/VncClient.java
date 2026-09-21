@@ -55,6 +55,23 @@ public final class VncClient implements AutoCloseable {
         return firstFrame;
     }
 
+    public void sendClientCutText(String text) {
+        byte[] bytes = text.getBytes(StandardCharsets.UTF_8);
+        synchronized (outLock()) {
+            try {
+                if (out == null) {
+                    return;
+                }
+                out.write(6);
+                out.write(new byte[]{0, 0, 0});
+                writeInt(bytes.length);
+                out.write(bytes);
+                out.flush();
+            } catch (IOException ignored) {
+            }
+        }
+    }
+
     public void setFrameListener(Consumer<VncClient> listener) {
         this.frameListener = listener;
     }
@@ -148,6 +165,28 @@ public final class VncClient implements AutoCloseable {
                 out.write(down ? 1 : 0);
                 out.write(new byte[]{0, 0});
                 writeInt(keysym);
+                out.flush();
+            } catch (IOException ignored) {
+            }
+        }
+    }
+
+    public void sendKeySequence(int[] keysyms) {
+        synchronized (outLock()) {
+            try {
+                if (out == null) {
+                    return;
+                }
+                for (int keysym : keysyms) {
+                    out.write(4);
+                    out.write(1);
+                    out.write(new byte[]{0, 0});
+                    writeInt(keysym);
+                    out.write(4);
+                    out.write(0);
+                    out.write(new byte[]{0, 0});
+                    writeInt(keysym);
+                }
                 out.flush();
             } catch (IOException ignored) {
             }

@@ -53,6 +53,7 @@
   "openpc.ui.eject_iso": "Eject",
   "openpc.ui.power_on": "Turn on PC",
   "openpc.ui.power_off": "Turn OFF",
+  "openpc.ui.paste_vm": "Paste VM",
   "openpc.ui.reset": "Reset",
   "openpc.ui.status": "Status",
   "openpc.ui.installed": "Installed",
