@@ -100,7 +100,7 @@ public final class QemuSetup {
             return;
         }
         String name = file.getFileName().toString();
-        if (name.equals("qemu-system-x86_64") || name.equals("qemu-ga")) {
+        if (name.equals("qemu-system-x86_64") || name.equals("qemu-img") || name.equals("qemu-ga")) {
             try {
                 Files.setPosixFilePermissions(file, Files.getPosixFilePermissions(file));
                 file.toFile().setExecutable(true, false);

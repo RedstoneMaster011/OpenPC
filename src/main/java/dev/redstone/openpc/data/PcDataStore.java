@@ -6,7 +6,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
-import java.io.RandomAccessFile;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
@@ -34,26 +33,47 @@ public final class PcDataStore {
     }
 
     public static Path diskFile(long pcId) {
+        Path legacy = legacyRawDiskFile(pcId);
+        if (Files.exists(legacy)) {
+            return legacy;
+        }
+        Path qcow2 = qcow2DiskFile(pcId);
+        if (Files.exists(qcow2)) {
+            return qcow2;
+        }
+        return qemuImgAvailable() ? qcow2 : legacy;
+    }
+
+    public static Path qcow2DiskFile(long pcId) {
+        return pcDirectory(pcId).resolve("disk0.qcow2");
+    }
+
+    public static Path legacyRawDiskFile(long pcId) {
         return pcDirectory(pcId).resolve("disk0.raw");
+    }
+
+    public static String diskFormat(long pcId) {
+        return diskFile(pcId).getFileName().toString().endsWith(".qcow2") ? "qcow2" : "raw";
     }
 
     public static Path biosDirectory() {
         return FabricLoader.getInstance().getGameDir().resolve("openpc/qemu");
     }
 
-    public static Path isoDirectory() {
-        return FabricLoader.getInstance().getGameDir().resolve("openpc/isos");
-    }
-
-    public static Path isoFile(String fileName) {
-        if (fileName == null || fileName.isBlank()) {
+    public static Path isoFile(String path) {
+        if (path == null || path.isBlank()) {
             return null;
         }
-        Path resolved = isoDirectory().resolve(fileName).normalize();
-        if (!resolved.startsWith(isoDirectory().normalize())) {
+        try {
+            Path resolved = Path.of(path).toAbsolutePath().normalize();
+            String fileName = resolved.getFileName() == null ? "" : resolved.getFileName().toString();
+            if (!fileName.toLowerCase(java.util.Locale.ROOT).endsWith(".iso")) {
+                return null;
+            }
+            return resolved;
+        } catch (RuntimeException ignored) {
             return null;
         }
-        return resolved;
     }
 
     public static long allocateUniquePcId() {
@@ -114,7 +134,7 @@ public final class PcDataStore {
         }
         try {
             Files.createDirectories(file.getParent());
-            try (RandomAccessFile floppy = new RandomAccessFile(file.toFile(), "rw")) {
+            try (java.io.RandomAccessFile floppy = new java.io.RandomAccessFile(file.toFile(), "rw")) {
                 floppy.setLength(1440L * 1024L);
             }
         } catch (IOException error) {
@@ -153,11 +173,56 @@ public final class PcDataStore {
         try {
             Files.createDirectories(disk.getParent());
             long bytes = capacityMb * 1024L * 1024L;
-            try (RandomAccessFile file = new RandomAccessFile(disk.toFile(), "rw")) {
-                file.setLength(bytes);
+            if (disk.getFileName().toString().endsWith(".qcow2")) {
+                createQcow2Disk(disk, bytes);
+            } else {
+                createSparseRawDisk(disk, bytes);
             }
         } catch (IOException error) {
             throw new DataStoreException("Failed to create disk image for pc_" + pcId + " with " + capacityMb + " MB", error);
+        }
+    }
+
+    private static boolean qemuImgAvailable() {
+        Path qemuImg = dev.redstone.openpc.client.QemuEnvironment.qemuImgPath();
+        return qemuImg != null && Files.isRegularFile(qemuImg);
+    }
+
+    private static void createQcow2Disk(Path disk, long bytes) throws IOException {
+        Path qemuImg = dev.redstone.openpc.client.QemuEnvironment.qemuImgPath();
+        if (qemuImg != null && Files.isRegularFile(qemuImg)) {
+            ProcessBuilder builder = new ProcessBuilder(qemuImg.toAbsolutePath().toString(), "create", "-f", "qcow2",
+                    disk.toAbsolutePath().toString(), Long.toString(bytes));
+            builder.redirectErrorStream(true);
+            Path bundledQemu = biosDirectory().toAbsolutePath().normalize();
+            if (Files.isDirectory(bundledQemu) && qemuImg.toAbsolutePath().normalize().startsWith(bundledQemu)) {
+                builder.environment().put("LD_LIBRARY_PATH", bundledQemu.toString());
+            }
+            try {
+                Process process = builder.start();
+                String output = new String(process.getInputStream().readAllBytes());
+                boolean exited = process.waitFor(15, java.util.concurrent.TimeUnit.SECONDS);
+                if (!exited) {
+                    process.destroyForcibly();
+                    throw new IOException("qemu-img timed out while creating " + disk);
+                }
+                if (process.exitValue() != 0) {
+                    throw new IOException("qemu-img exited with code " + process.exitValue() + ": " + output.trim());
+                }
+                return;
+            } catch (InterruptedException error) {
+                Thread.currentThread().interrupt();
+                throw new IOException("Interrupted while creating qcow2 image", error);
+            }
+        }
+        throw new IOException("qemu-img was not found; cannot create qcow2 disk image.");
+    }
+
+    private static void createSparseRawDisk(Path disk, long bytes) throws IOException {
+        try (java.nio.channels.FileChannel channel = java.nio.channels.FileChannel.open(disk,
+                StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE, StandardOpenOption.SPARSE)) {
+            channel.position(bytes - 1);
+            channel.write(java.nio.ByteBuffer.wrap(new byte[]{0}));
         }
     }
 

@@ -10,7 +10,6 @@ import dev.redstone.openpc.client.gui.render.Face;
 import dev.redstone.openpc.client.gui.render.SoftwareRenderer;
 import dev.redstone.openpc.client.net.OpenpcClientNetworking;
 import dev.redstone.openpc.data.PcConfig;
-import dev.redstone.openpc.data.PcDataStore;
 import dev.redstone.openpc.hardware.HardwareCategory;
 import dev.redstone.openpc.hardware.HardwareDefinition;
 import dev.redstone.openpc.hardware.HardwareRegistry;
@@ -30,14 +29,13 @@ import net.minecraft.text.Text;
 import net.minecraft.util.Identifier;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.MathHelper;
+import org.lwjgl.PointerBuffer;
 import org.lwjgl.glfw.GLFW;
+import org.lwjgl.system.MemoryStack;
+import org.lwjgl.util.tinyfd.TinyFileDialogs;
 
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Locale;
-import java.util.stream.Stream;
 
 public class PcBuilderScreen extends Screen {
 
@@ -195,7 +193,8 @@ public class PcBuilderScreen extends Screen {
         power.active = valid && !sending;
         addDrawableChild(power);
 
-        addIsoButtons();
+        int isoW = Math.min(220, Math.max(120, viewW / 2));
+        addIsoButtons(viewX + viewW - isoW, viewY + 14, isoW);
 
         int openW = Math.max(80, textRenderer.getWidth(Text.translatable("openpc.ui.open_case")) + 8);
         ButtonWidget open = ButtonWidget.builder(Text.translatable("openpc.ui.open_case"), b -> {
@@ -205,57 +204,62 @@ public class PcBuilderScreen extends Screen {
         addDrawableChild(open);
     }
 
-    private void addIsoButtons() {
-        int x = viewX - 4;
-        int y = viewY + 8;
+    private void addIsoButtons(int x, int y, int width) {
+        String isoPath = working.isoFileName();
+        Text label = isoPath == null
+                ? Text.translatable("openpc.ui.select_iso")
+                : Text.literal(shortenPath(isoPath, Math.max(64, width - 8)));
+        ButtonWidget select = ButtonWidget.builder(label, b -> openIsoPicker())
+                .dimensions(x, y, width, 12)
+                .build();
+        select.active = !sending;
+        addDrawableChild(select);
+
         if (working.isoFileName() != null) {
             int ejectW = Math.max(48, textRenderer.getWidth(Text.translatable("openpc.ui.eject_iso")) + 8);
             addDrawableChild(ButtonWidget.builder(Text.translatable("openpc.ui.eject_iso"), b -> {
                 working.setIsoFileName(null);
                 commitDraft();
-            }).dimensions(x, y + 22, ejectW, 12).build());
-            return;
-        }
-        List<String> isos = listIsoFiles();
-        int row = 0;
-        int col = 0;
-        for (String name : isos) {
-            int w = Math.max(48, textRenderer.getWidth(name) + 8);
-            int bx = x + col;
-            int by = y + 22 + row * 14;
-            if (bx + w > viewX + viewW) {
-                col = 0;
-                row++;
-                bx = x;
-                by = y + 22 + row * 14;
-            }
-            addDrawableChild(ButtonWidget.builder(Text.literal(name), b -> {
-                working.setIsoFileName(name);
-                commitDraft();
-            }).dimensions(bx, by, w, 12).build());
-            col += w + 4;
-            if (col > 220) {
-                col = 0;
-                row++;
-            }
+            }).dimensions(x + width - ejectW, y + 14, ejectW, 12).build());
         }
     }
 
-    private List<String> listIsoFiles() {
-        List<String> names = new ArrayList<>();
-        Path dir = PcDataStore.isoDirectory();
-        try {
-            Files.createDirectories(dir);
-            try (Stream<Path> stream = Files.list(dir)) {
-                stream.filter(path -> Files.isRegularFile(path))
-                        .map(path -> path.getFileName().toString())
-                        .filter(name -> name.toLowerCase(Locale.ROOT).endsWith(".iso"))
-                        .sorted()
-                        .forEach(names::add);
-            }
-        } catch (Exception ignored) {
+    private String shortenPath(String path, int maxWidth) {
+        if (textRenderer.getWidth(path) <= maxWidth) {
+            return path;
         }
-        return names;
+        String ellipsis = "...";
+        int start = Math.max(0, path.length() - 1);
+        while (start > 0 && textRenderer.getWidth(ellipsis + path.substring(start)) < maxWidth) {
+            start--;
+        }
+        return ellipsis + path.substring(Math.min(path.length(), start + 1));
+    }
+
+    private void openIsoPicker() {
+        MinecraftClient client = MinecraftClient.getInstance();
+        Thread picker = new Thread(() -> {
+            String selected;
+            try (MemoryStack stack = MemoryStack.stackPush()) {
+                PointerBuffer filters = stack.mallocPointer(1);
+                filters.put(0, stack.UTF8("*.iso"));
+                selected = TinyFileDialogs.tinyfd_openFileDialog(
+                        Text.translatable("openpc.ui.select_iso").getString(),
+                        null,
+                        filters,
+                        "ISO images (*.iso)",
+                        false);
+            }
+            if (selected != null && !selected.isBlank()) {
+                String normalized = java.nio.file.Path.of(selected).toAbsolutePath().normalize().toString();
+                client.execute(() -> {
+                    working.setIsoFileName(normalized);
+                    commitDraft();
+                });
+            }
+        }, "openpc-iso-picker");
+        picker.setDaemon(true);
+        picker.start();
     }
 
     private void buildOpenCaseButtons() {

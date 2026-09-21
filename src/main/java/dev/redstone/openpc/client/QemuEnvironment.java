@@ -46,6 +46,10 @@ public final class QemuEnvironment {
         return detectOs() == Os.WINDOWS ? "qemu-system-x86_64.exe" : "qemu-system-x86_64";
     }
 
+    public static String qemuImgName() {
+        return detectOs() == Os.WINDOWS ? "qemu-img.exe" : "qemu-img";
+    }
+
     public static Path binaryPath() {
         if (detectOs() != Os.WINDOWS) {
             try {
@@ -61,6 +65,26 @@ public final class QemuEnvironment {
             }
         }
         return QemuSetup.requireGameQemuDirectory().resolve(binaryName());
+    }
+
+    public static Path qemuImgPath() {
+        if (detectOs() != Os.WINDOWS) {
+            try {
+                ProcessBuilder which = new ProcessBuilder("which", "qemu-img");
+                which.redirectErrorStream(true);
+                Process process = which.start();
+                String output = new String(process.getInputStream().readAllBytes()).trim();
+                process.waitFor();
+                if (process.exitValue() == 0 && !output.isEmpty()) {
+                    return Path.of(output);
+                }
+            } catch (IOException | InterruptedException ignored) {
+                if (ignored instanceof InterruptedException) {
+                    Thread.currentThread().interrupt();
+                }
+            }
+        }
+        return QemuSetup.requireGameQemuDirectory().resolve(qemuImgName());
     }
 
     public static boolean binaryExists() {

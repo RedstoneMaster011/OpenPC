@@ -203,12 +203,19 @@ public final class PcConfig {
             this.isoFileName = null;
             return;
         }
-        String base = Path.of(isoFileName).getFileName().toString();
-        if (!base.toLowerCase(java.util.Locale.ROOT).endsWith(".iso") || !base.equals(isoFileName)) {
+        Path path;
+        try {
+            path = Path.of(isoFileName).toAbsolutePath().normalize();
+        } catch (RuntimeException ignored) {
             this.isoFileName = null;
             return;
         }
-        this.isoFileName = base;
+        String fileName = path.getFileName() == null ? "" : path.getFileName().toString();
+        if (!fileName.toLowerCase(java.util.Locale.ROOT).endsWith(".iso")) {
+            this.isoFileName = null;
+            return;
+        }
+        this.isoFileName = path.toString();
     }
 
     public List<String> installedExpansionIds() {

@@ -51,7 +51,7 @@
   "openpc.ui.select_iso": "Select ISO",
   "openpc.ui.inserted_iso": "Inserted ISO: %s",
   "openpc.ui.eject_iso": "Eject",
-  "openpc.ui.power_on": "Turn ON",
+  "openpc.ui.power_on": "Turn on PC",
   "openpc.ui.power_off": "Turn OFF",
   "openpc.ui.reset": "Reset",
   "openpc.ui.status": "Status",

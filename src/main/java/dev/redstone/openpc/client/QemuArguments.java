@@ -33,17 +33,21 @@ public final class QemuArguments {
         args.add("cores=" + cores);
         args.add("-m");
         args.add(Long.toString(ramMb));
+        boolean hasIso = false;
+        Path iso = PcDataStore.isoFile(config.isoFileName());
+        if (iso != null && Files.isRegularFile(iso)) {
+            hasIso = true;
+        }
         args.add("-boot");
-        args.add("order=c,menu=off");
+        args.add("order=" + (hasIso ? "dc" : "c") + ",menu=off");
         args.add("-no-reboot");
 
         PcDataStore.ensureDiskImage(config.pcId(), config.installedStorageMegabytes());
         args.add("-drive");
         args.add("file=" + PcDataStore.diskFile(config.pcId()).toAbsolutePath()
-                + ",format=raw,media=disk,index=0,cache=writeback");
+                + ",format=" + PcDataStore.diskFormat(config.pcId()) + ",media=disk,index=0,cache=writeback");
 
-        Path iso = PcDataStore.isoFile(config.isoFileName());
-        if (iso != null && Files.isRegularFile(iso)) {
+        if (hasIso) {
             args.add("-drive");
             args.add("file=" + iso.toAbsolutePath() + ",format=raw,media=cdrom,index=1,readonly=on");
         } else if (config.opticalId() != null) {
