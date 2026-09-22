@@ -189,7 +189,7 @@ public class PcBuilderScreen extends Screen {
     private int computeButtonSignature() {
         int hash = openCase ? 1 : 0;
         hash = 31 * hash + (working.motherboardId() == null ? 0 : working.motherboardId().hashCode());
-        hash = 31 * hash + (working.cpuId() == null ? 0 : working.cpuId().hashCode());
+        hash = 31 * hash + working.cpuSlots().hashCode();
         hash = 31 * hash + working.ramSlots().hashCode();
         hash = 31 * hash + working.storageSlots().hashCode();
         hash = 31 * hash + (working.gpuId() == null ? 0 : working.gpuId().hashCode());
@@ -448,9 +448,7 @@ private void rebuildButtons() {
         leftY = addPartRow(leftY, leftX, colW, bottomLimit,
                 working.motherboardId(), this::removeMotherboard,
                 HardwareCategory.MOTHERBOARD, def -> installMotherboard(def));
-        leftY = addPartRow(leftY, leftX, colW, bottomLimit,
-                working.cpuId(), () -> clearSlot(HardwareCategory.CPU),
-                HardwareCategory.CPU, def -> installSingle(HardwareCategory.CPU, def));
+        leftY = addCpuRows(leftY, leftX, colW, bottomLimit);
         leftY = addRamRows(leftY, leftX, colW, bottomLimit);
         leftY = addStorageRows(leftY, leftX, colW, bottomLimit);
 
@@ -479,7 +477,7 @@ private void rebuildButtons() {
         addHeader(x, y, sectionHeaderKey(category));
         y += 11;
         if (installedId != null) {
-            addRemoveChip(x, y, w, installedId, remove);
+            addRemoveChip(x, y, w, installedId, null, remove);
             return y + 16;
         }
         for (HardwareDefinition definition : HardwareRegistry.ofCategory(category)) {
@@ -488,6 +486,41 @@ private void rebuildButtons() {
             }
             if (addInstallButton(x, y, w, definition, () -> install.accept(definition))) {
                 y += 14;
+            }
+        }
+        return y + 6;
+    }
+
+    private int addCpuRows(int y, int x, int w, int bottomLimit) {
+        addHeader(x, y, "openpc.ui.section_cpu");
+        y += 11;
+        resizeCpuSlots();
+        boolean installOffered = false;
+        for (int i = 0; i < working.cpuSlots().size(); i++) {
+            String id = working.cpuAt(i);
+            if (id != null) {
+                if (y > bottomLimit) {
+                    break;
+                }
+                int slot = i;
+                addRemoveChip(x, y, w, id, "CPU " + (i + 1), () -> {
+                    working.removeCpuAt(slot);
+                    commitDraft();
+                });
+                y += 14;
+            } else if (!installOffered) {
+                addHeader(x, y, Text.translatable("openpc.ui.cpu_slot", i + 1));
+                y += 11;
+                int slot = firstEmptyCpuSlot();
+                for (HardwareDefinition definition : HardwareRegistry.ofCategory(HardwareCategory.CPU)) {
+                    if (y > bottomLimit) {
+                        break;
+                    }
+                    if (addInstallButton(x, y, w, definition, () -> installCpu(slot, definition))) {
+                        y += 14;
+                    }
+                }
+                installOffered = true;
             }
         }
         return y + 6;
@@ -504,7 +537,7 @@ private void rebuildButtons() {
                     break;
                 }
                 int slot = i;
-                addRemoveChip(x, y, w, id, () -> {
+                addRemoveChip(x, y, w, id, "Ram " + (i + 1), () -> {
                     working.removeRamAt(slot);
                     commitDraft();
                 });
@@ -538,7 +571,7 @@ private void rebuildButtons() {
                     break;
                 }
                 int slot = i;
-                addRemoveChip(x, y, w, id, () -> {
+                addRemoveChip(x, y, w, id, "Expansion " + (i + 1), () -> {
                     working.removeExpansionAt(slot);
                     commitDraft();
                 });
@@ -573,7 +606,7 @@ private void rebuildButtons() {
                     break;
                 }
                 int slot = i;
-                addRemoveChip(x, y, w, id, () -> {
+                addRemoveChip(x, y, w, id, "HDD " + (i + 1), () -> {
                     working.removeStorageAt(slot);
                     commitDraft();
                 });
@@ -619,11 +652,15 @@ private void rebuildButtons() {
         };
     }
 
-    private void addRemoveChip(int x, int y, int width, String definitionId, Runnable action) {
+    private void addRemoveChip(int x, int y, int width, String definitionId, String slotPrefix, Runnable action) {
         addDrawableChild(ButtonWidget.builder(Text.literal("x"), b -> action.run())
                 .dimensions(x + width - 12, y, 12, 12)
                 .build());
-        installedLabels.add(new InstalledLabel(x, y + 3, definitionId));
+        HardwareRegistry.find(definitionId).ifPresent(def -> {
+            String name = Text.translatable(def.translationKey()).getString();
+            installedLabels.add(new InstalledLabel(x, y + 3,
+                    slotPrefix == null ? name : slotPrefix + ": " + name));
+        });
     }
 
     private boolean addInstallButton(int x, int y, int width, HardwareDefinition definition, Runnable action) {
@@ -649,7 +686,6 @@ private void rebuildButtons() {
 
     private void installSingle(HardwareCategory category, HardwareDefinition definition) {
         switch (category) {
-            case CPU -> working.setCpuId(definition.id());
             case GPU -> working.setGpuId(definition.id());
             case AUDIO -> working.setAudioId(definition.id());
             case NETWORK -> working.setNetworkId(definition.id());
@@ -663,7 +699,6 @@ private void rebuildButtons() {
 
     private void clearSlot(HardwareCategory category) {
         switch (category) {
-            case CPU -> working.setCpuId(null);
             case GPU -> working.setGpuId(null);
             case AUDIO -> working.setAudioId(null);
             case NETWORK -> working.setNetworkId(null);
@@ -677,6 +712,11 @@ private void rebuildButtons() {
 
     private void installRam(int slot, HardwareDefinition definition) {
         working.setRamAt(slot, definition.id());
+        commitDraft();
+    }
+
+    private void installCpu(int slot, HardwareDefinition definition) {
+        working.setCpuAt(slot, definition.id());
         commitDraft();
     }
 
@@ -696,6 +736,16 @@ private void rebuildButtons() {
         resizeSlotLists();
         for (int i = 0; i < max; i++) {
             if (working.ramAt(i) == null) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    private int firstEmptyCpuSlot() {
+        resizeCpuSlots();
+        for (int i = 0; i < working.cpuSlots().size(); i++) {
+            if (working.cpuAt(i) == null) {
                 return i;
             }
         }
@@ -799,7 +849,19 @@ private void rebuildButtons() {
         while (working.expansionSlots().size() < expansionSlots) {
             working.expansionSlots().add(null);
         }
+        resizeCpuSlots();
         resizeStorageSlots();
+    }
+
+    private void resizeCpuSlots() {
+        HardwareDefinition motherboard = HardwareRegistry.find(working.motherboardId()).orElse(null);
+        int max = motherboard == null
+                ? 1
+                : Math.min(PcConfig.MAX_CPU_SLOTS,
+                Math.max(1, motherboard.getInt(dev.redstone.openpc.hardware.HardwareDefinitions.PROP_CPU_SLOTS, 1)));
+        while (working.cpuSlots().size() < max) {
+            working.cpuSlots().add(null);
+        }
     }
 
     private void resizeStorageSlots() {
@@ -906,7 +968,18 @@ private void rebuildButtons() {
     private List<Text> componentLabels() {
         List<Text> lines = new ArrayList<>();
         componentLine(lines, "openpc.category.motherboard", working.motherboardId());
-        componentLine(lines, "openpc.category.cpu", working.cpuId());
+        List<String> cpu = new ArrayList<>();
+        for (int i = 0; i < working.cpuSlots().size(); i++) {
+            String id = working.cpuAt(i);
+            if (id == null) {
+                continue;
+            }
+            HardwareDefinition def = HardwareRegistry.find(id).orElse(null);
+            if (def != null) {
+                cpu.add(Text.translatable(def.translationKey()).getString());
+            }
+        }
+        componentLine(lines, "openpc.category.cpu", cpu);
         List<String> ram = new ArrayList<>();
         for (int i = 0; i < working.ramSlots().size(); i++) {
             String id = working.ramAt(i);
@@ -1027,10 +1100,7 @@ private void rebuildButtons() {
 
     private void drawInstalledLabels(DrawContext context) {
         for (InstalledLabel label : installedLabels) {
-            HardwareRegistry.find(label.definitionId()).ifPresent(definition -> {
-                String name = Text.translatable(definition.translationKey()).getString();
-                context.drawTextWithShadow(textRenderer, Text.literal(fitLabel(name, width - label.x() - 4)), label.x(), label.y(), 0xFFFFFF);
-            });
+            context.drawTextWithShadow(textRenderer, Text.literal(fitLabel(label.text(), width - label.x() - 4)), label.x(), label.y(), 0xFFFFFF);
         }
     }
 
@@ -1071,7 +1141,7 @@ private void rebuildButtons() {
     private record OverlayIcon(int x, int y, ItemStack stack) {
     }
 
-    private record InstalledLabel(int x, int y, String definitionId) {
+    private record InstalledLabel(int x, int y, String text) {
     }
 
     private record OpenSection(int x, int y, Text text) {

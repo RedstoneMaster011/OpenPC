@@ -226,7 +226,9 @@ public final class PcService {
             return counts;
         }
         addPart(counts, config.motherboardId());
-        addPart(counts, config.cpuId());
+        for (String id : config.installedCpuIds()) {
+            addPart(counts, id);
+        }
         for (String id : config.storageSlots()) {
             if (id != null) {
                 addPart(counts, id);

@@ -16,15 +16,18 @@ public final class PcValidation {
         PcValidationResult.Builder result = PcValidationResult.builder();
 
         HardwareDefinition motherboard = present(config.motherboardId());
-        HardwareDefinition cpu = present(config.cpuId());
+        HardwareDefinition cpu = present(config.cpuAt(0));
 
         if (motherboard == null) {
             result.error(Text.translatable("openpc.error.missing_motherboard"));
         }
-        if (cpu == null) {
+        if (config.installedCpuCount() == 0) {
             result.error(Text.translatable("openpc.error.missing_cpu"));
         }
 
+        if (motherboard != null) {
+            validateCpuSlots(result, config, motherboard);
+        }
         if (motherboard != null && cpu != null) {
             validateCpuCompatibility(result, motherboard, cpu);
         }
@@ -62,13 +65,19 @@ public final class PcValidation {
         PcValidationResult.Builder result = PcValidationResult.builder();
 
         HardwareDefinition motherboard = present(config.motherboardId());
-        HardwareDefinition cpu = present(config.cpuId());
+        HardwareDefinition cpu = present(config.cpuAt(0));
 
         if (config.motherboardId() != null && motherboard == null) {
             result.error(Text.translatable("openpc.error.unknown_component", config.motherboardId()));
         }
-        if (config.cpuId() != null && cpu == null) {
-            result.error(Text.translatable("openpc.error.unknown_component", config.cpuId()));
+        for (int i = 0; i < config.cpuSlots().size(); i++) {
+            String id = config.cpuAt(i);
+            if (id != null && !HardwareRegistry.find(id).isPresent()) {
+                result.error(Text.translatable("openpc.error.unknown_component", id));
+            }
+        }
+        if (motherboard != null) {
+            validateCpuSlots(result, config, motherboard);
         }
         if (motherboard != null && cpu != null) {
             validateCpuCompatibility(result, motherboard, cpu);
@@ -121,6 +130,30 @@ public final class PcValidation {
             return null;
         }
         return HardwareRegistry.find(id).orElse(null);
+    }
+
+    private static void validateCpuSlots(PcValidationResult.Builder result, PcConfig config, HardwareDefinition motherboard) {
+        int slots = motherboard.getInt(HardwareDefinitions.PROP_CPU_SLOTS, 1);
+        int used = 0;
+        for (int i = 0; i < config.cpuSlots().size(); i++) {
+            String id = config.cpuAt(i);
+            if (id == null) {
+                continue;
+            }
+            used++;
+            if (i >= slots) {
+                result.error(Text.translatable("openpc.error.cpu_slot_overflow", i + 1, slots));
+            }
+            HardwareDefinition definition = HardwareRegistry.find(id).orElse(null);
+            if (definition == null || definition.category() != HardwareCategory.CPU) {
+                result.error(Text.translatable("openpc.error.wrong_cpu_category"));
+            } else if (definition.getInt(HardwareDefinitions.PROP_CORES, 0) < 1) {
+                result.error(Text.translatable("openpc.error.cpu_no_cores", definition.displayName()));
+            }
+        }
+        if (used > slots) {
+            result.error(Text.translatable("openpc.error.too_many_cpu", used, slots));
+        }
     }
 
     private static void validateCpuCompatibility(PcValidationResult.Builder result, HardwareDefinition motherboard, HardwareDefinition cpu) {

@@ -14,6 +14,7 @@ import static dev.redstone.openpc.hardware.HardwareCategory.STORAGE;
 public final class HardwareDefinitions {
 
     public static final String PROP_RAM_SLOTS = "ram_slots";
+    public static final String PROP_CPU_SLOTS = "cpu_slots";
     public static final String PROP_MAX_RAM_MB = "max_ram_mb";
     public static final String PROP_EXPANSION_SLOTS = "expansion_slots";
     public static final String PROP_STORAGE_BAYS = "storage_bays";
@@ -51,6 +52,7 @@ public final class HardwareDefinitions {
     private static void registerMotherboards() {
         HardwareRegistry.register(HardwareDefinition.of("motherboard_1", MOTHERBOARD, "", "motherboard")
                 .property(PROP_RAM_SLOTS, 2)
+                .property(PROP_CPU_SLOTS, 1)
                 .property(PROP_MAX_RAM_MB, 65536)
                 .property(PROP_EXPANSION_SLOTS, 4)
                 .property(PROP_STORAGE_BAYS, 2)
@@ -62,6 +64,7 @@ public final class HardwareDefinitions {
 
         HardwareRegistry.register(HardwareDefinition.of("motherboard_2", MOTHERBOARD, "", "motherboard")
                 .property(PROP_RAM_SLOTS, 4)
+                .property(PROP_CPU_SLOTS, 1)
                 .property(PROP_MAX_RAM_MB, 65536)
                 .property(PROP_EXPANSION_SLOTS, 6)
                 .property(PROP_STORAGE_BAYS, 4)
@@ -73,6 +76,7 @@ public final class HardwareDefinitions {
 
         HardwareRegistry.register(HardwareDefinition.of("motherboard_3", MOTHERBOARD, "", "motherboard")
                 .property(PROP_RAM_SLOTS, 4)
+                .property(PROP_CPU_SLOTS, 1)
                 .property(PROP_MAX_RAM_MB, 65536)
                 .property(PROP_EXPANSION_SLOTS, 6)
                 .property(PROP_STORAGE_BAYS, 6)
@@ -81,6 +85,42 @@ public final class HardwareDefinitions {
                 .property(PROP_INTEGRATED_NETWORK, true)
                 .property(PROP_INTEGRATED_GRAPHICS, true)
                 .property(PROP_MACHINE, "pc"));
+
+        HardwareRegistry.register(HardwareDefinition.of("motherboard_4", MOTHERBOARD, "", "motherboard")
+                .property(PROP_RAM_SLOTS, 8)
+                .property(PROP_CPU_SLOTS, 1)
+                .property(PROP_MAX_RAM_MB, 262144)
+                .property(PROP_EXPANSION_SLOTS, 8)
+                .property(PROP_STORAGE_BAYS, 8)
+                .property(PROP_USB_PORTS, 8)
+                .property(PROP_INTEGRATED_AUDIO, true)
+                .property(PROP_INTEGRATED_NETWORK, true)
+                .property(PROP_INTEGRATED_GRAPHICS, true)
+                .property(PROP_MACHINE, "pc"));
+
+        HardwareRegistry.register(HardwareDefinition.of("motherboard_5", MOTHERBOARD, "", "motherboard")
+                .property(PROP_RAM_SLOTS, 8)
+                .property(PROP_CPU_SLOTS, 2)
+                .property(PROP_MAX_RAM_MB, 524288)
+                .property(PROP_EXPANSION_SLOTS, 8)
+                .property(PROP_STORAGE_BAYS, 8)
+                .property(PROP_USB_PORTS, 8)
+                .property(PROP_INTEGRATED_AUDIO, true)
+                .property(PROP_INTEGRATED_NETWORK, true)
+                .property(PROP_INTEGRATED_GRAPHICS, false)
+                .property(PROP_MACHINE, "q35"));
+
+        HardwareRegistry.register(HardwareDefinition.of("motherboard_6", MOTHERBOARD, "", "motherboard")
+                .property(PROP_RAM_SLOTS, 16)
+                .property(PROP_CPU_SLOTS, 4)
+                .property(PROP_MAX_RAM_MB, 1048576)
+                .property(PROP_EXPANSION_SLOTS, 12)
+                .property(PROP_STORAGE_BAYS, 10)
+                .property(PROP_USB_PORTS, 8)
+                .property(PROP_INTEGRATED_AUDIO, true)
+                .property(PROP_INTEGRATED_NETWORK, true)
+                .property(PROP_INTEGRATED_GRAPHICS, false)
+                .property(PROP_MACHINE, "q35"));
     }
 
     private static void registerCpus() {

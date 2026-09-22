@@ -1,9 +1,11 @@
 This mod uses QEMU to run PC emulations inside of Minecraft!
 It can run Windows, Linux, And even MacOS!
+
+![Alt text](src/main/resources/assets/openpc/icon.png)
+
 # Instances
 - Singleplayer ONLY (AKA, Mutiplayer is untested.)
 - More then one PC at a time works!
-
 
 # Supported OS's
 

@@ -4,6 +4,9 @@
   "item.openpc.motherboard_1": "Motherboard (2 RAM, 2 Bays)",
   "item.openpc.motherboard_2": "Motherboard (4 RAM, 4 Bays)",
   "item.openpc.motherboard_3": "Motherboard (4 RAM, 6 Bays)",
+  "item.openpc.motherboard_4": "Motherboard (8 RAM, 8 Bays)",
+  "item.openpc.motherboard_5": "Dual-CPU Motherboard (8 RAM, 8 Bays)",
+  "item.openpc.motherboard_6": "Quad-CPU Motherboard (16 RAM, 10 Bays)",
   "item.openpc.cpu_2core": "2-Core / 2-Thread CPU Allocation",
   "item.openpc.cpu_4core": "4-Core / 4-Thread CPU Allocation",
   "item.openpc.cpu_pro_2core": "Pro 2-Core / 4-Thread CPU Allocation",
@@ -105,6 +108,7 @@
   "openpc.ui.storage_size": "Capacity: %s GB",
   "openpc.ui.ram_slot": "RAM slot %s",
   "openpc.ui.expansion_slot": "Expansion slot %s",
+  "openpc.ui.cpu_slot": "CPU socket %s",
   "openpc.msg.starting": "Starting computer...",
   "openpc.msg.vnc_timeout": "The computer did not boot in time. Check the console log.",
   "openpc.error.edit_rejected": "Your changes were rejected by the server.",
@@ -132,6 +136,8 @@
   "openpc.error.ram_over_max": "%s does not fit in the %s motherboard.",
   "openpc.error.ram_total_over_max": "Total RAM of %s MB exceeds the motherboard limit of %s MB.",
   "openpc.error.too_many_expansion": "Too many expansion cards (%s of %s slots used).",
+  "openpc.error.cpu_slot_overflow": "CPU socket %s does not exist on this motherboard (max %s).",
+  "openpc.error.too_many_cpu": "Too many CPUs (%s of %s sockets used).",
   "openpc.error.not_an_expansion_card": "%s is not an expansion card.",
   "openpc.error.delete_failed": "Failed to delete PC: %s"
 }

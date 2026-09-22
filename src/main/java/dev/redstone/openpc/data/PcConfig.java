@@ -10,11 +10,12 @@ import java.util.List;
 public final class PcConfig {
 
     public static final int MAX_STORAGE_SLOTS = 5;
+    public static final int MAX_CPU_SLOTS = 4;
 
     private final long pcId;
     private String name;
     private String motherboardId;
-    private String cpuId;
+    private final List<String> cpuSlots;
     private final List<String> ramSlots;
     private final List<String> storageSlots;
     private String gpuId;
@@ -32,6 +33,7 @@ public final class PcConfig {
 
     public PcConfig(long pcId) {
         this.pcId = pcId;
+        this.cpuSlots = new ArrayList<>();
         this.ramSlots = new ArrayList<>();
         this.storageSlots = new ArrayList<>();
         this.expansionSlots = new ArrayList<>();
@@ -46,7 +48,7 @@ public final class PcConfig {
     public PcConfig copyWithPcId(long newPcId) {
         PcConfig copy = new PcConfig(newPcId);
         copy.motherboardId = motherboardId;
-        copy.cpuId = cpuId;
+        copy.cpuSlots.addAll(cpuSlots);
         copy.ramSlots.addAll(ramSlots);
         copy.storageSlots.addAll(storageSlots);
         copy.gpuId = gpuId;
@@ -77,12 +79,51 @@ public final class PcConfig {
         this.motherboardId = motherboardId;
     }
 
-    public String cpuId() {
-        return cpuId;
+    public List<String> cpuSlots() {
+        return cpuSlots;
     }
 
-    public void setCpuId(String cpuId) {
-        this.cpuId = cpuId;
+    public String cpuAt(int index) {
+        if (index < 0 || index >= cpuSlots.size()) {
+            return null;
+        }
+        return cpuSlots.get(index);
+    }
+
+    public void setCpuAt(int index, String definitionId) {
+        while (cpuSlots.size() <= index) {
+            cpuSlots.add(null);
+        }
+        if (cpuSlots.size() > MAX_CPU_SLOTS) {
+            cpuSlots.subList(MAX_CPU_SLOTS, cpuSlots.size()).clear();
+        }
+        cpuSlots.set(index, definitionId);
+    }
+
+    public void removeCpuAt(int index) {
+        if (index >= 0 && index < cpuSlots.size()) {
+            cpuSlots.set(index, null);
+        }
+    }
+
+    public int installedCpuCount() {
+        int count = 0;
+        for (String id : cpuSlots) {
+            if (id != null) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    public List<String> installedCpuIds() {
+        List<String> result = new ArrayList<>();
+        for (String id : cpuSlots) {
+            if (id != null) {
+                result.add(id);
+            }
+        }
+        return result;
     }
 
     public List<String> ramSlots() {
