@@ -1,0 +1,18 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "pattern": [
+    "NDN",
+    "RER",
+    "NDN"
+  ],
+  "key": {
+    "N": "minecraft:netherite_ingot",
+    "D": "minecraft:diamond",
+    "R": "minecraft:redstone",
+    "E": "minecraft:emerald"
+  },
+  "result": {
+    "id": "openpc:motherboard_6",
+    "count": 1
+  }
+}
