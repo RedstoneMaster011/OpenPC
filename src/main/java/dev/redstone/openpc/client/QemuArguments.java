@@ -57,18 +57,27 @@ public final class QemuArguments {
         args.add("order=" + (hasIso ? "dc" : "c") + ",menu=off");
         args.add("-no-reboot");
 
-        PcDataStore.ensureDiskImage(config.pcId(), config.installedStorageMegabytes());
-        args.add("-drive");
-        args.add("file=" + PcDataStore.diskFile(config.pcId()).toAbsolutePath()
-                + ",format=" + PcDataStore.diskFormat(config.pcId()) + ",media=disk,index=0,cache=writeback");
+        int nextIndex = 0;
+        for (int slot = 0; slot < config.storageSlots().size(); slot++) {
+            if (config.storageAt(slot) == null) {
+                continue;
+            }
+            long capacityMb = config.storageMegabytesAt(slot);
+            PcDataStore.ensureDiskImage(config.pcId(), slot, capacityMb);
+            args.add("-drive");
+            args.add("file=" + PcDataStore.diskFile(config.pcId(), slot).toAbsolutePath()
+                    + ",format=" + PcDataStore.diskFormat(config.pcId(), slot)
+                    + ",media=disk,index=" + nextIndex + ",cache=writeback");
+            nextIndex++;
+        }
 
         if (hasIso) {
             args.add("-drive");
-            args.add("file=" + iso.toAbsolutePath() + ",format=raw,media=cdrom,index=1,readonly=on");
+            args.add("file=" + iso.toAbsolutePath() + ",format=raw,media=cdrom,index=" + nextIndex + ",readonly=on");
+            nextIndex++;
         }
 
         if (config.opticalId() != null) {
-            int index = hasIso ? 2 : 1;
             Path cdrom = PcDataStore.isoFile(config.cdromFileName());
             String media = cdrom != null && Files.isRegularFile(cdrom)
                     ? cdrom.toAbsolutePath().toString()
@@ -77,7 +86,8 @@ public final class QemuArguments {
                 PcDataStore.ensureOpticalImage(config.pcId());
             }
             args.add("-drive");
-            args.add("file=" + media + ",format=raw,media=cdrom,index=" + index + ",readonly=on");
+            args.add("file=" + media + ",format=raw,media=cdrom,index=" + nextIndex + ",readonly=on");
+            nextIndex++;
         }
 
         if (config.floppyId() != null) {
@@ -89,7 +99,8 @@ public final class QemuArguments {
                 PcDataStore.ensureFloppyImage(config.pcId());
             }
             args.add("-drive");
-            args.add("file=" + floppyMedia + ",format=raw,if=floppy,index=0,media=disk");
+            args.add("file=" + floppyMedia + ",format=raw,if=floppy,index=0,media=disk,readonly="
+                    + (config.floppyLocked() ? "on" : "off"));
         }
 
         boolean hasNetwork = config.networkId() != null || hasIntegrated(config, HardwareDefinitions.PROP_INTEGRATED_NETWORK);

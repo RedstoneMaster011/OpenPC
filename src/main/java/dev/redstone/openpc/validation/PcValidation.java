@@ -38,14 +38,7 @@ public final class PcValidation {
             validateRam(result, config, motherboard);
         }
 
-        if (config.storageId() != null) {
-            HardwareDefinition storage = HardwareRegistry.find(config.storageId()).orElse(null);
-            if (storage == null) {
-                result.error(Text.translatable("openpc.error.unknown_storage", config.storageId()));
-            } else if (storage.category() != HardwareCategory.STORAGE) {
-                result.error(Text.translatable("openpc.error.wrong_storage_category"));
-            }
-        }
+        validateStorage(result, config);
 
         validateVideo(result, config, motherboard);
 
@@ -90,14 +83,7 @@ public final class PcValidation {
             validateRamSlots(result, config, motherboard);
         }
 
-        if (config.storageId() != null) {
-            HardwareDefinition storage = HardwareRegistry.find(config.storageId()).orElse(null);
-            if (storage == null) {
-                result.error(Text.translatable("openpc.error.unknown_storage", config.storageId()));
-            } else if (storage.category() != HardwareCategory.STORAGE) {
-                result.error(Text.translatable("openpc.error.wrong_storage_category"));
-            }
-        }
+        validateStorage(result, config);
 
         for (String id : config.expansionSlots()) {
             validateExpansion(result, id);
@@ -113,6 +99,21 @@ public final class PcValidation {
         validateKnownComponent(result, config.floppyId());
 
         return result.build();
+    }
+
+    private static void validateStorage(PcValidationResult.Builder result, PcConfig config) {
+        for (int i = 0; i < config.storageSlots().size(); i++) {
+            String id = config.storageAt(i);
+            if (id == null) {
+                continue;
+            }
+            HardwareDefinition storage = HardwareRegistry.find(id).orElse(null);
+            if (storage == null) {
+                result.error(Text.translatable("openpc.error.unknown_storage", id));
+            } else if (storage.category() != HardwareCategory.STORAGE) {
+                result.error(Text.translatable("openpc.error.wrong_storage_category"));
+            }
+        }
     }
 
     private static HardwareDefinition present(String id) {

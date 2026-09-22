@@ -27,6 +27,7 @@ public final class PcSerialization {
     private static final String KEY_NETWORK = "network";
     private static final String KEY_OPTICAL = "optical";
     private static final String KEY_FLOPPY = "floppy";
+    private static final String KEY_FLOPPY_LOCKED = "floppy_locked";
     private static final String KEY_EXPANSION = "expansion";
     private static final String KEY_ISO = "iso";
     private static final String KEY_CDROM_FILE = "cdrom_file";
@@ -63,12 +64,13 @@ public final class PcSerialization {
         root.addProperty(KEY_MOTHERBOARD, nullToBlank(config.motherboardId()));
         root.addProperty(KEY_CPU, nullToBlank(config.cpuId()));
         root.add(KEY_RAM, stringsArray(config.ramSlots()));
-        root.addProperty(KEY_STORAGE, nullToBlank(config.storageId()));
+        root.add(KEY_STORAGE, stringsArray(config.storageSlots()));
         root.addProperty(KEY_GPU, nullToBlank(config.gpuId()));
         root.addProperty(KEY_AUDIO, nullToBlank(config.audioId()));
         root.addProperty(KEY_NETWORK, nullToBlank(config.networkId()));
         root.addProperty(KEY_OPTICAL, nullToBlank(config.opticalId()));
         root.addProperty(KEY_FLOPPY, nullToBlank(config.floppyId()));
+        root.addProperty(KEY_FLOPPY_LOCKED, config.floppyLocked());
         root.add(KEY_EXPANSION, stringsArray(config.expansionSlots()));
         root.addProperty(KEY_ISO, nullToBlank(config.isoFileName()));
         root.addProperty(KEY_CDROM_FILE, nullToBlank(config.cdromFileName()));
@@ -91,12 +93,12 @@ public final class PcSerialization {
         config.setName(blankToNull(optionalString(root, KEY_NAME)));
         config.setMotherboardId(blankToNull(optionalString(root, KEY_MOTHERBOARD)));
         config.setCpuId(blankToNull(optionalString(root, KEY_CPU)));
-        config.setStorageId(blankToNull(optionalString(root, KEY_STORAGE)));
         config.setGpuId(blankToNull(optionalString(root, KEY_GPU)));
         config.setAudioId(blankToNull(optionalString(root, KEY_AUDIO)));
         config.setNetworkId(blankToNull(optionalString(root, KEY_NETWORK)));
         config.setOpticalId(blankToNull(optionalString(root, KEY_OPTICAL)));
         config.setFloppyId(blankToNull(optionalString(root, KEY_FLOPPY)));
+        config.setFloppyLocked(root.has(KEY_FLOPPY_LOCKED) && root.get(KEY_FLOPPY_LOCKED).getAsBoolean());
         config.setIsoFileName(blankToNull(optionalString(root, KEY_ISO)));
         config.setCdromFileName(blankToNull(optionalString(root, KEY_CDROM_FILE)));
         config.setFloppyFileName(blankToNull(optionalString(root, KEY_FLOPPY_FILE)));
@@ -105,6 +107,16 @@ public final class PcSerialization {
         config.ramSlots().clear();
         if (root.has(KEY_RAM)) {
             config.ramSlots().addAll(collectStrings(root.get(KEY_RAM)));
+        }
+
+        config.storageSlots().clear();
+        if (root.has(KEY_STORAGE)) {
+            JsonElement storage = root.get(KEY_STORAGE);
+            if (storage.isJsonArray()) {
+                config.storageSlots().addAll(collectStrings(storage));
+            } else if (storage.isJsonPrimitive() && !storage.getAsString().isBlank()) {
+                config.storageSlots().add(storage.getAsString());
+            }
         }
 
         config.expansionSlots().clear();

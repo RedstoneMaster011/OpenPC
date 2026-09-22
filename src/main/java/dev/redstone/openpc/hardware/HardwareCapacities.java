@@ -16,10 +16,10 @@ public final class HardwareCapacities {
 
     public static long storageMegabytes(String definitionId) {
         if (definitionId == null) {
-            return 512;
+            return 0;
         }
         return HardwareRegistry.find(definitionId)
-                .map(definition -> definition.getLong(HardwareDefinitions.PROP_CAPACITY_MB, 512))
-                .orElse(512L);
+                .map(definition -> definition.getLong(HardwareDefinitions.PROP_CAPACITY_MB, 0))
+                .orElse(0L);
     }
 }

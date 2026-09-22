@@ -148,7 +148,7 @@ public class PcBuilderScreen extends Screen {
         layoutCpuY = y + 14;
         y = layoutCpuY + 14 + 16;
         layoutMediaY = y + 14;
-        layoutMediaRows = 1 + (working.opticalId() != null ? 1 : 0) + (working.floppyId() != null ? 1 : 0);
+        layoutMediaRows = 1 + (working.opticalId() != null ? 1 : 0) + (working.floppyId() != null ? 2 : 0);
         y = layoutMediaY + layoutMediaRows * 18 + 16;
         layoutCompTextY = y + 14;
         layoutCompLines = Math.max(4, Math.min(14, (height - 12 - layoutCompTextY) / 9));
@@ -191,12 +191,13 @@ public class PcBuilderScreen extends Screen {
         hash = 31 * hash + (working.motherboardId() == null ? 0 : working.motherboardId().hashCode());
         hash = 31 * hash + (working.cpuId() == null ? 0 : working.cpuId().hashCode());
         hash = 31 * hash + working.ramSlots().hashCode();
-        hash = 31 * hash + (working.storageId() == null ? 0 : working.storageId().hashCode());
+        hash = 31 * hash + working.storageSlots().hashCode();
         hash = 31 * hash + (working.gpuId() == null ? 0 : working.gpuId().hashCode());
         hash = 31 * hash + (working.audioId() == null ? 0 : working.audioId().hashCode());
         hash = 31 * hash + (working.networkId() == null ? 0 : working.networkId().hashCode());
         hash = 31 * hash + (working.opticalId() == null ? 0 : working.opticalId().hashCode());
         hash = 31 * hash + (working.floppyId() == null ? 0 : working.floppyId().hashCode());
+        hash = 31 * hash + (working.floppyLocked() ? 1 : 0);
         hash = 31 * hash + working.expansionSlots().hashCode();
         hash = 31 * hash + (working.isoFileName() == null ? 0 : working.isoFileName().hashCode());
         hash = 31 * hash + (working.cdromFileName() == null ? 0 : working.cdromFileName().hashCode());
@@ -205,6 +206,7 @@ public class PcBuilderScreen extends Screen {
         hash = 31 * hash + inventoryFingerprint();
         hash = 31 * hash + (lastSendFailed ? 7 : 0);
         hash = 31 * hash + (sending ? 11 : 0);
+        hash = 31 * hash + (QemuEnvironment.isUsable() ? 1 : 0);
         hash = 31 * hash + (currentValidation != null && currentValidation.isValid() ? 3 : 9);
         return hash;
     }
@@ -288,7 +290,7 @@ private void rebuildButtons() {
                     });
         }
         if (working.floppyId() != null) {
-            addMediaButton(xs, y, iw, "openpc.ui.select_floppy", "openpc.ui.eject_floppy",
+            y = addMediaButton(xs, y, iw, "openpc.ui.select_floppy", "openpc.ui.eject_floppy",
                     working.floppyFileName(),
                     () -> openMediaPicker("openpc.ui.select_floppy", "*.img", "Floppy images (*.img)",
                             path -> working.setFloppyFileName(path)),
@@ -296,6 +298,7 @@ private void rebuildButtons() {
                         working.setFloppyFileName(null);
                         commitDraft();
                     });
+            addFloppyLockButton(xs, y, iw);
         }
 
         nameField = new TextFieldWidget(textRenderer, xs, layoutFieldY, iw, 12, Text.translatable("openpc.ui.pc_name"));
@@ -325,6 +328,21 @@ private void rebuildButtons() {
                     .build());
         }
         return y + 18;
+    }
+
+    private void addFloppyLockButton(int x, int y, int w) {
+        ButtonWidget lock = ButtonWidget.builder(floppyLockButtonText(), b -> {
+            working.setFloppyLocked(!working.floppyLocked());
+            commitDraft();
+        }).dimensions(x, y, w, 12).build();
+        lock.active = !sending;
+        addDrawableChild(lock);
+    }
+
+    private Text floppyLockButtonText() {
+        return working.floppyLocked()
+                ? Text.translatable("openpc.ui.floppy_locked_on")
+                : Text.translatable("openpc.ui.floppy_locked_off");
     }
 
     private void addCpuTypeButtons() {
@@ -434,9 +452,7 @@ private void rebuildButtons() {
                 working.cpuId(), () -> clearSlot(HardwareCategory.CPU),
                 HardwareCategory.CPU, def -> installSingle(HardwareCategory.CPU, def));
         leftY = addRamRows(leftY, leftX, colW, bottomLimit);
-        leftY = addPartRow(leftY, leftX, colW, bottomLimit,
-                working.storageId(), () -> clearSlot(HardwareCategory.STORAGE),
-                HardwareCategory.STORAGE, def -> installSingle(HardwareCategory.STORAGE, def));
+        leftY = addStorageRows(leftY, leftX, colW, bottomLimit);
 
         int rightY = viewY + 14;
         rightY = addPartRow(rightY, rightX, colW, bottomLimit,
@@ -545,6 +561,41 @@ private void rebuildButtons() {
         return y + 6;
     }
 
+    private int addStorageRows(int y, int x, int w, int bottomLimit) {
+        addHeader(x, y, "openpc.ui.section_storage");
+        y += 11;
+        resizeStorageSlots();
+        boolean installOffered = false;
+        for (int i = 0; i < working.storageSlots().size(); i++) {
+            String id = working.storageAt(i);
+            if (id != null) {
+                if (y > bottomLimit) {
+                    break;
+                }
+                int slot = i;
+                addRemoveChip(x, y, w, id, () -> {
+                    working.removeStorageAt(slot);
+                    commitDraft();
+                });
+                y += 14;
+            } else if (!installOffered) {
+                addHeader(x, y, Text.translatable("openpc.ui.storage_slot", i + 1));
+                y += 11;
+                int slot = firstEmptyStorageSlot();
+                for (HardwareDefinition definition : HardwareRegistry.ofCategory(HardwareCategory.STORAGE)) {
+                    if (y > bottomLimit) {
+                        break;
+                    }
+                    if (addInstallButton(x, y, w, definition, () -> installStorage(slot, definition))) {
+                        y += 14;
+                    }
+                }
+                installOffered = true;
+            }
+        }
+        return y + 6;
+    }
+
     private void addHeader(int x, int y, String key) {
         addHeader(x, y, Text.translatable(key));
     }
@@ -599,7 +650,6 @@ private void rebuildButtons() {
     private void installSingle(HardwareCategory category, HardwareDefinition definition) {
         switch (category) {
             case CPU -> working.setCpuId(definition.id());
-            case STORAGE -> working.setStorageId(definition.id());
             case GPU -> working.setGpuId(definition.id());
             case AUDIO -> working.setAudioId(definition.id());
             case NETWORK -> working.setNetworkId(definition.id());
@@ -614,7 +664,6 @@ private void rebuildButtons() {
     private void clearSlot(HardwareCategory category) {
         switch (category) {
             case CPU -> working.setCpuId(null);
-            case STORAGE -> working.setStorageId(null);
             case GPU -> working.setGpuId(null);
             case AUDIO -> working.setAudioId(null);
             case NETWORK -> working.setNetworkId(null);
@@ -628,6 +677,11 @@ private void rebuildButtons() {
 
     private void installRam(int slot, HardwareDefinition definition) {
         working.setRamAt(slot, definition.id());
+        commitDraft();
+    }
+
+    private void installStorage(int slot, HardwareDefinition definition) {
+        working.setStorageAt(slot, definition.id());
         commitDraft();
     }
 
@@ -654,6 +708,16 @@ private void rebuildButtons() {
         resizeSlotLists();
         for (int i = 0; i < max; i++) {
             if (working.expansionAt(i) == null) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    private int firstEmptyStorageSlot() {
+        resizeStorageSlots();
+        for (int i = 0; i < working.storageSlots().size(); i++) {
+            if (working.storageAt(i) == null) {
                 return i;
             }
         }
@@ -734,6 +798,13 @@ private void rebuildButtons() {
         }
         while (working.expansionSlots().size() < expansionSlots) {
             working.expansionSlots().add(null);
+        }
+        resizeStorageSlots();
+    }
+
+    private void resizeStorageSlots() {
+        while (working.storageSlots().size() < PcConfig.MAX_STORAGE_SLOTS) {
+            working.storageSlots().add(null);
         }
     }
 
@@ -869,16 +940,25 @@ private void rebuildButtons() {
     }
 
     private String storageDescription() {
-        if (working.storageId() == null) {
-            return null;
+        StringBuilder description = new StringBuilder();
+        for (int i = 0; i < working.storageSlots().size(); i++) {
+            String id = working.storageAt(i);
+            if (id == null) {
+                continue;
+            }
+            HardwareDefinition def = HardwareRegistry.find(id).orElse(null);
+            if (def == null) {
+                continue;
+            }
+            long mb = working.storageMegabytesAt(i);
+            String part = Text.translatable(def.translationKey()).getString()
+                    + " (" + (mb >= 1024 ? (mb / 1024) + " GB" : mb + " MB") + ")";
+            if (!description.isEmpty()) {
+                description.append(", ");
+            }
+            description.append(part);
         }
-        HardwareDefinition def = HardwareRegistry.find(working.storageId()).orElse(null);
-        if (def == null) {
-            return null;
-        }
-        long mb = working.installedStorageMegabytes();
-        return Text.translatable(def.translationKey()).getString()
-                + " (" + (mb >= 1024 ? (mb / 1024) + " GB" : mb + " MB") + ")";
+        return description.isEmpty() ? null : description.toString();
     }
 
     private void componentLine(List<Text> lines, String categoryKey, String definitionId) {

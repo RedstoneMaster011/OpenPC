@@ -9,17 +9,20 @@ import java.util.List;
 
 public final class PcConfig {
 
+    public static final int MAX_STORAGE_SLOTS = 5;
+
     private final long pcId;
     private String name;
     private String motherboardId;
     private String cpuId;
     private final List<String> ramSlots;
-    private String storageId;
+    private final List<String> storageSlots;
     private String gpuId;
     private String audioId;
     private String networkId;
     private String opticalId;
     private String floppyId;
+    private boolean floppyLocked;
     private final List<String> expansionSlots;
     private String isoFileName;
     private String cdromFileName;
@@ -30,6 +33,7 @@ public final class PcConfig {
     public PcConfig(long pcId) {
         this.pcId = pcId;
         this.ramSlots = new ArrayList<>();
+        this.storageSlots = new ArrayList<>();
         this.expansionSlots = new ArrayList<>();
         this.powerState = PcPowerState.OFF;
         this.cpuType = "host";
@@ -44,12 +48,13 @@ public final class PcConfig {
         copy.motherboardId = motherboardId;
         copy.cpuId = cpuId;
         copy.ramSlots.addAll(ramSlots);
-        copy.storageId = storageId;
+        copy.storageSlots.addAll(storageSlots);
         copy.gpuId = gpuId;
         copy.audioId = audioId;
         copy.networkId = networkId;
         copy.opticalId = opticalId;
         copy.floppyId = floppyId;
+        copy.floppyLocked = floppyLocked;
         copy.expansionSlots.addAll(expansionSlots);
         copy.isoFileName = isoFileName;
         copy.cdromFileName = cdromFileName;
@@ -125,18 +130,60 @@ public final class PcConfig {
     }
 
     public long installedStorageMegabytes() {
-        if (storageId == null) {
-            return 512;
+        long total = 0;
+        for (String id : installedStorageIds()) {
+            total += HardwareCapacities.storageMegabytes(id);
         }
-        return HardwareCapacities.storageMegabytes(storageId);
+        return total;
     }
 
-    public String storageId() {
-        return storageId;
+    public List<String> storageSlots() {
+        return storageSlots;
     }
 
-    public void setStorageId(String storageId) {
-        this.storageId = storageId;
+    public String storageAt(int index) {
+        if (index < 0 || index >= storageSlots.size()) {
+            return null;
+        }
+        return storageSlots.get(index);
+    }
+
+    public void setStorageAt(int index, String definitionId) {
+        while (storageSlots.size() <= index) {
+            storageSlots.add(null);
+        }
+        storageSlots.set(index, definitionId);
+    }
+
+    public void removeStorageAt(int index) {
+        if (index >= 0 && index < storageSlots.size()) {
+            storageSlots.set(index, null);
+        }
+    }
+
+    public int installedStorageCount() {
+        int count = 0;
+        for (String id : storageSlots) {
+            if (id != null) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    public List<String> installedStorageIds() {
+        List<String> result = new ArrayList<>();
+        for (String id : storageSlots) {
+            if (id != null) {
+                result.add(id);
+            }
+        }
+        return result;
+    }
+
+    public long storageMegabytesAt(int index) {
+        String id = storageAt(index);
+        return id == null ? 0 : HardwareCapacities.storageMegabytes(id);
     }
 
     public String gpuId() {
@@ -177,6 +224,14 @@ public final class PcConfig {
 
     public void setFloppyId(String floppyId) {
         this.floppyId = floppyId;
+    }
+
+    public boolean floppyLocked() {
+        return floppyLocked;
+    }
+
+    public void setFloppyLocked(boolean floppyLocked) {
+        this.floppyLocked = floppyLocked;
     }
 
     public List<String> expansionSlots() {

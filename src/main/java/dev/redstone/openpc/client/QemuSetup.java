@@ -40,6 +40,24 @@ public final class QemuSetup {
         return extracted.get() && Files.isDirectory(requireGameQemuDirectory());
     }
 
+    public static void awaitReady() {
+        synchronized (QemuSetup.class) {
+            if (extraction == null) {
+                initialize();
+            }
+        }
+        CompletableFuture<Void> future = extraction;
+        if (future != null) {
+            try {
+                future.get();
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+            } catch (java.util.concurrent.ExecutionException error) {
+                // Extraction failed; isReady() will report false and callers fall back gracefully.
+            }
+        }
+    }
+
     private static void runExtraction() {
         Path gameDir = FabricLoader.getInstance().getGameDir();
         Path source = findBundledQemu();

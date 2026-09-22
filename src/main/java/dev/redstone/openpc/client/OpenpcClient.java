@@ -9,6 +9,7 @@ public class OpenpcClient implements ClientModInitializer {
     @Override
     public void onInitializeClient() {
         QemuSetup.initialize();
+        QemuEnvironment.startProbe();
         PcClientController.init();
         OpenpcClientNetworking.registerReceivers();
         ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> QemuProcessManager.stopAll());

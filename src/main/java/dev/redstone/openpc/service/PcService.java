@@ -93,6 +93,7 @@ public final class PcService {
             return inventoryResult;
         }
 
+        applyStorageDiskChanges(current, next);
         blockEntity.setConfig(next);
         OpenpcNetworking.sendSnapshotTo(player, pos, next);
         return PcValidationResult.ok();
@@ -203,6 +204,22 @@ public final class PcService {
         return PcValidationResult.ok();
     }
 
+    private static void applyStorageDiskChanges(PcConfig current, PcConfig next) {
+        for (int slot = 0; slot < PcConfig.MAX_STORAGE_SLOTS; slot++) {
+            boolean wasFilled = current.storageAt(slot) != null;
+            boolean nowFilled = next.storageAt(slot) != null;
+            if (wasFilled && !nowFilled) {
+                // The HDD was removed, so delete its disk image too.
+                PcDataStore.deleteDiskFile(next.pcId(), slot);
+            } else if (!wasFilled && nowFilled) {
+                // A drive was added into a slot that may still hold an orphaned default
+                // 'test' disk from older versions (created when no storage configured).
+                // Discard it so a correctly-sized image is created on next boot.
+                PcDataStore.deleteDiskFile(next.pcId(), slot);
+            }
+        }
+    }
+
     private static Map<String, Integer> partCounts(PcConfig config) {
         Map<String, Integer> counts = new HashMap<>();
         if (config == null) {
@@ -210,7 +227,11 @@ public final class PcService {
         }
         addPart(counts, config.motherboardId());
         addPart(counts, config.cpuId());
-        addPart(counts, config.storageId());
+        for (String id : config.storageSlots()) {
+            if (id != null) {
+                addPart(counts, id);
+            }
+        }
         addPart(counts, config.gpuId());
         addPart(counts, config.audioId());
         addPart(counts, config.networkId());

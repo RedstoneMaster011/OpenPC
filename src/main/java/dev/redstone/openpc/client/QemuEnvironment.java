@@ -1,12 +1,15 @@
 package dev.redstone.openpc.client;
 
+import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.InputStreamReader;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -19,6 +22,7 @@ public final class QemuEnvironment {
         OTHER
     }
 
+    private static final AtomicBoolean PROBE_STARTED = new AtomicBoolean(false);
     private static volatile boolean probed;
     private static volatile boolean binaryUsable;
     private static volatile List<String> probesInstructions = List.of();
@@ -67,22 +71,18 @@ public final class QemuEnvironment {
     }
 
     public static boolean isUsable() {
-        ensureProbed();
         return binaryUsable;
     }
 
     public static List<String> soundBackends() {
-        ensureProbed();
         return soundBackends;
     }
 
     public static List<String> machineNames() {
-        ensureProbed();
         return machineNames;
     }
 
     public static String configuredMachine(boolean defaultSupported) {
-        ensureProbed();
         if (machineNames.contains("q35")) {
             return "q35";
         }
@@ -90,7 +90,6 @@ public final class QemuEnvironment {
     }
 
     public static String pickSoundBackend() {
-        ensureProbed();
         if (detectOs() == Os.WINDOWS) {
             return "dsound";
         }
@@ -105,17 +104,26 @@ public final class QemuEnvironment {
         return "none";
     }
 
-    private static void ensureProbed() {
-        if (probed) {
+    /**
+     * Kicks off the QEMU environment probe on a background thread. Safe to call
+     * any number of times; the probe runs exactly once and never blocks the caller.
+     */
+    public static void startProbe() {
+        if (!PROBE_STARTED.compareAndSet(false, true)) {
             return;
         }
-        synchronized (QemuEnvironment.class) {
-            if (probed) {
-                return;
+        Thread probe = new Thread(() -> {
+            QemuSetup.awaitReady();
+            synchronized (QemuEnvironment.class) {
+                if (probed) {
+                    return;
+                }
+                runProbe();
+                probed = true;
             }
-            runProbe();
-            probed = true;
-        }
+        }, "openpc-qemu-probe");
+        probe.setDaemon(true);
+        probe.start();
     }
 
     private static void runProbe() {
@@ -124,61 +132,67 @@ public final class QemuEnvironment {
             return;
         }
         Path binary = binaryPath();
-        ProcessBuilder probe = new ProcessBuilder(binary.toAbsolutePath().toString(), "-version");
-        probe.redirectErrorStream(true);
-        probe.environment().put("LD_LIBRARY_PATH", QemuSetup.requireGameQemuDirectory().toAbsolutePath().toString());
-        try {
-            Process process = probe.start();
-            String combined = new String(process.getInputStream().readAllBytes());
-            boolean exited = process.waitFor(6, TimeUnit.SECONDS);
-            if (!exited) {
-                process.destroyForcibly();
-                binaryUsable = false;
-                return;
-            }
-            if (process.exitValue() != 0) {
-                OpenpcQemuRuntime.logWarn("QEMU binary answered with exit code " + process.exitValue() + ": " + combined.trim());
-                binaryUsable = false;
-                return;
-            }
-            binaryUsable = true;
-            probesInstructions = parseInstructions(readProbe(combined, binary, "-h"));
-            soundBackends = parseSoundBackends(readProbe(null, binary, "-audiodev", "help"));
-            machineNames = parseNames(readProbe(null, binary, "-machine", "help"));
-        } catch (IOException error) {
-            OpenpcQemuRuntime.logError("QEMU probe could not start the bundled binary", error);
+        ProbeResult version = runProbeProcess(binary, 6, "-version");
+        if (version.exitCode() != 0) {
+            OpenpcQemuRuntime.logWarn("QEMU binary answered with exit code " + version.exitCode() + ": " + version.output().trim());
             binaryUsable = false;
-        } catch (InterruptedException error) {
-            Thread.currentThread().interrupt();
-            binaryUsable = false;
+            return;
         }
+        binaryUsable = true;
+        probesInstructions = parseInstructions(version.output());
+        soundBackends = parseSoundBackends(runProbeProcess(binary, 4, "-audiodev", "help").output());
+        machineNames = parseNames(runProbeProcess(binary, 4, "-machine", "help").output());
     }
 
-    private static String readProbe(String alreadyRead, Path binary, String... args) {
-        if (alreadyRead != null && args.length == 1 && args[0].equals("-h")) {
-            return alreadyRead;
-        }
-        ProcessBuilder probe = new ProcessBuilder(new ArrayList<String>() {{
-            add(binary.toAbsolutePath().toString());
-            addAll(List.of(args));
-        }});
+    private static ProbeResult runProbeProcess(Path binary, int timeoutSeconds, String... args) {
+        List<String> command = new ArrayList<>();
+        command.add(binary.toAbsolutePath().toString());
+        command.addAll(List.of(args));
+
+        ProcessBuilder probe = new ProcessBuilder(command);
         probe.redirectErrorStream(true);
         probe.environment().put("LD_LIBRARY_PATH", QemuSetup.requireGameQemuDirectory().toAbsolutePath().toString());
+
+        Process process;
         try {
-            Process process = probe.start();
-            String output = new String(process.getInputStream().readAllBytes());
-            boolean exited = process.waitFor(4, TimeUnit.SECONDS);
-            if (!exited) {
-                process.destroyForcibly();
-                return "";
-            }
-            return output;
-        } catch (IOException | InterruptedException error) {
-            if (error instanceof InterruptedException) {
-                Thread.currentThread().interrupt();
-            }
-            return "";
+            process = probe.start();
+        } catch (IOException error) {
+            OpenpcQemuRuntime.logError("QEMU probe could not start the bundled binary", error);
+            return new ProbeResult(-1, "");
         }
+
+        StringBuilder output = new StringBuilder();
+        Thread reader = new Thread(() -> {
+            try (BufferedReader in = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
+                String line;
+                while ((line = in.readLine()) != null) {
+                    output.append(line).append('\n');
+                }
+            } catch (IOException ignored) {
+            }
+        }, "openpc-qemu-probe-reader");
+        reader.setDaemon(true);
+        reader.start();
+
+        int exitCode;
+        try {
+            if (process.waitFor(timeoutSeconds, TimeUnit.SECONDS)) {
+                exitCode = process.exitValue();
+            } else {
+                process.destroyForcibly();
+                exitCode = -1;
+            }
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+            process.destroyForcibly();
+            exitCode = -1;
+        }
+        try {
+            reader.join(100);
+        } catch (InterruptedException ignored) {
+            Thread.currentThread().interrupt();
+        }
+        return new ProbeResult(exitCode, output.toString());
     }
 
     private static List<String> parseSoundBackends(String help) {
@@ -232,5 +246,8 @@ public final class QemuEnvironment {
             }
         }
         return result;
+    }
+
+    private record ProbeResult(int exitCode, String output) {
     }
 }

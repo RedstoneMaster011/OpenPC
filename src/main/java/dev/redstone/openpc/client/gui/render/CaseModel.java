@@ -150,10 +150,12 @@ public final class CaseModel {
     }
 
     private static void addStorage(List<Face> faces, PcConfig config) {
-        int bays = storageBayCount(config);
-        for (int i = 0; i < bays; i++) {
-            boolean filled = i == 0 && config.storageId() != null;
+        for (int i = 0; i < PcConfig.MAX_STORAGE_SLOTS; i++) {
+            boolean filled = config.storageAt(i) != null;
             float x0 = -0.36f + i * 0.13f;
+            if (x0 + 0.11f > 0.5f) {
+                break;
+            }
             ComponentTextures.Key key = filled ? ComponentTextures.Key.STORAGE : ComponentTextures.Key.CASE_INNER;
             addBox(faces, Vec3.of(x0, -0.38f, 0.10f), Vec3.of(x0 + 0.11f, -0.28f, 0.44f), key, filled ? 0.9f : 0.5f);
         }
@@ -162,11 +164,6 @@ public final class CaseModel {
     private static int ramSlotCount(PcConfig config) {
         HardwareDefinition motherboard = HardwareRegistry.find(config.motherboardId()).orElse(null);
         return motherboard == null ? 4 : Math.max(1, motherboard.getInt(HardwareDefinitions.PROP_RAM_SLOTS, 4));
-    }
-
-    private static int storageBayCount(PcConfig config) {
-        HardwareDefinition motherboard = HardwareRegistry.find(config.motherboardId()).orElse(null);
-        return motherboard == null ? 3 : Math.max(1, motherboard.getInt(HardwareDefinitions.PROP_STORAGE_BAYS, 3));
     }
 
     private static void addPsu(List<Face> faces) {
@@ -349,7 +346,7 @@ public final class CaseModel {
                     HitKind.EXPANSION, i));
         }
 
-        for (int bay = 0; bay < storageBayCount(config); bay++) {
+        for (int bay = 0; bay < PcConfig.MAX_STORAGE_SLOTS; bay++) {
             float x0 = -0.36f + bay * 0.13f;
             boxes.add(new ComponentBox(Vec3.of(x0, -0.38f, 0.10f), Vec3.of(x0 + 0.11f, -0.28f, 0.44f),
                     HitKind.STORAGE, bay));

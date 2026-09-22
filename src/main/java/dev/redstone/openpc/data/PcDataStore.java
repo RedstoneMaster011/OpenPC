@@ -32,28 +32,28 @@ public final class PcDataStore {
         return pcDirectory(pcId).resolve("pc.json");
     }
 
-    public static Path diskFile(long pcId) {
-        Path legacy = legacyRawDiskFile(pcId);
+    public static Path diskFile(long pcId, int slot) {
+        Path legacy = rawDiskFile(pcId, slot);
         if (Files.exists(legacy)) {
             return legacy;
         }
-        Path qcow2 = qcow2DiskFile(pcId);
+        Path qcow2 = qcow2DiskFile(pcId, slot);
         if (Files.exists(qcow2)) {
             return qcow2;
         }
         return qemuImgAvailable() ? qcow2 : legacy;
     }
 
-    public static Path qcow2DiskFile(long pcId) {
-        return pcDirectory(pcId).resolve("disk0.qcow2");
+    public static Path qcow2DiskFile(long pcId, int slot) {
+        return pcDirectory(pcId).resolve(slot == 0 ? "disk0.qcow2" : "disk" + slot + ".qcow2");
     }
 
-    public static Path legacyRawDiskFile(long pcId) {
-        return pcDirectory(pcId).resolve("disk0.raw");
+    public static Path rawDiskFile(long pcId, int slot) {
+        return pcDirectory(pcId).resolve(slot == 0 ? "disk0.raw" : "disk" + slot + ".raw");
     }
 
-    public static String diskFormat(long pcId) {
-        return diskFile(pcId).getFileName().toString().endsWith(".qcow2") ? "qcow2" : "raw";
+    public static String diskFormat(long pcId, int slot) {
+        return diskFile(pcId, slot).getFileName().toString().endsWith(".qcow2") ? "qcow2" : "raw";
     }
 
     public static Path biosDirectory() {
@@ -188,7 +188,7 @@ public final class PcDataStore {
     }
 
     public static boolean hasPersistedDisk(long pcId) {
-        return Files.exists(diskFile(pcId));
+        return Files.exists(diskFile(pcId, 0));
     }
 
     public static Path floppyFile(long pcId) {
@@ -237,10 +237,22 @@ public final class PcDataStore {
         }
     }
 
-    public static void ensureDiskImage(long pcId, long capacityMb) {
-        Path disk = diskFile(pcId);
-        if (Files.exists(disk)) {
+    public static void ensureDiskImage(long pcId, int slot, long capacityMb) {
+        if (capacityMb <= 0) {
             return;
+        }
+        Path disk = diskFile(pcId, slot);
+        if (Files.exists(disk)) {
+            if (diskMatchesCapacity(disk, capacityMb)) {
+                return;
+            }
+            // Stale disk left over from an older default (e.g. the old 512 MB test disk).
+            // Discard it so a fresh image at the configured capacity is created.
+            try {
+                Files.delete(disk);
+            } catch (IOException error) {
+                throw new DataStoreException("Failed to replace stale disk image " + disk + " for pc_" + pcId, error);
+            }
         }
         try {
             Files.createDirectories(disk.getParent());
@@ -252,6 +264,47 @@ public final class PcDataStore {
             }
         } catch (IOException error) {
             throw new DataStoreException("Failed to create disk image for pc_" + pcId + " with " + capacityMb + " MB", error);
+        }
+    }
+
+    public static void deleteDiskFile(long pcId, int slot) {
+        try {
+            Files.deleteIfExists(rawDiskFile(pcId, slot));
+            Files.deleteIfExists(qcow2DiskFile(pcId, slot));
+        } catch (IOException error) {
+            LOGGER.warn("Failed to delete disk{} for pc_{}", slot, pcId, error);
+        }
+    }
+
+    private static boolean diskMatchesCapacity(Path disk, long capacityMb) {
+        long required = capacityMb * 1024L * 1024L;
+        String name = disk.getFileName() == null ? "" : disk.getFileName().toString();
+        if (name.endsWith(".qcow2")) {
+            long virtual = qcow2VirtualSize(disk);
+            return virtual > 0 && virtual == required;
+        }
+        try {
+            return Files.size(disk) == required;
+        } catch (IOException error) {
+            return false;
+        }
+    }
+
+    private static long qcow2VirtualSize(Path disk) {
+        try (java.nio.channels.FileChannel channel = java.nio.channels.FileChannel.open(disk, StandardOpenOption.READ)) {
+            java.nio.ByteBuffer header = java.nio.ByteBuffer.allocate(32);
+            if (channel.read(header) < 32) {
+                return -1;
+            }
+            header.flip();
+            if (header.getInt() != 0x514649fb) {
+                return -1;
+            }
+            // qcow2 header: magic(4) version(4) backing_file_offset(8) backing_file_size(4)
+            //               cluster_bits(1) l2_bits(1) padding(2) virtual_size(8)
+            return header.getLong(24);
+        } catch (IOException error) {
+            return -1;
         }
     }
 
