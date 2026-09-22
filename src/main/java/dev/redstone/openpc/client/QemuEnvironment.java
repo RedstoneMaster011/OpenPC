@@ -51,39 +51,10 @@ public final class QemuEnvironment {
     }
 
     public static Path binaryPath() {
-        if (detectOs() != Os.WINDOWS) {
-            try {
-                ProcessBuilder which = new ProcessBuilder("which", "qemu-system-x86_64");
-                which.redirectErrorStream(true);
-                Process process = which.start();
-                String output = new String(process.getInputStream().readAllBytes()).trim();
-                process.waitFor();
-                if (process.exitValue() == 0 && !output.isEmpty()) {
-                    return Path.of(output);
-                }
-            } catch (IOException | InterruptedException ignored) {
-            }
-        }
         return QemuSetup.requireGameQemuDirectory().resolve(binaryName());
     }
 
     public static Path qemuImgPath() {
-        if (detectOs() != Os.WINDOWS) {
-            try {
-                ProcessBuilder which = new ProcessBuilder("which", "qemu-img");
-                which.redirectErrorStream(true);
-                Process process = which.start();
-                String output = new String(process.getInputStream().readAllBytes()).trim();
-                process.waitFor();
-                if (process.exitValue() == 0 && !output.isEmpty()) {
-                    return Path.of(output);
-                }
-            } catch (IOException | InterruptedException ignored) {
-                if (ignored instanceof InterruptedException) {
-                    Thread.currentThread().interrupt();
-                }
-            }
-        }
         return QemuSetup.requireGameQemuDirectory().resolve(qemuImgName());
     }
 

@@ -102,12 +102,13 @@ public final class PcClientController {
     }
 
     private static void onQemuExit(long pcId, int exitCode) {
+        boolean intentionalStop = QemuProcessManager.consumeStopRequest(pcId);
         MinecraftClient.getInstance().execute(() -> {
             PcConfig config = activeConfig;
             if (config == null || config.pcId() != pcId) {
                 return;
             }
-            if (exitCode == 0) {
+            if (!intentionalStop && exitCode == 0) {
                 // Exit code 0 means the guest sent a reboot request: relaunch QEMU and reconnect.
                 Openpc.LOGGER.info("QEMU for pc_" + pcId + " exited with code 0; treating as reboot and relaunching");
                 ensureQemuRunning(config);
@@ -128,7 +129,7 @@ public final class PcClientController {
             PcConfig updated = config.copy();
             updated.setPowerState(PcPowerState.OFF);
             activeConfig = updated;
-            if (activePos != null) {
+            if (activePos != null && !intentionalStop) {
                 OpenpcClientNetworking.sendPower(activePos, false);
             }
         });

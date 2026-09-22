@@ -125,6 +125,8 @@ public final class QemuArguments {
         args.add("none");
         args.add("-vnc");
         args.add("127.0.0.1:" + vncDisplay);
+        args.add("-qmp");
+        args.add("tcp:127.0.0.1:" + qmpPortFor(config.pcId()) + ",server=on,wait=off");
 
         for (String expansion : config.installedExpansionIds()) {
             HardwareDefinition definition = HardwareRegistry.find(expansion).orElse(null);
@@ -173,6 +175,10 @@ public final class QemuArguments {
 
     public static int vncPortFor(long pcId) {
         return 5900 + vncDisplayFor(pcId);
+    }
+
+    public static int qmpPortFor(long pcId) {
+        return 44000 + vncDisplayFor(pcId);
     }
 
     private static boolean hasIntegrated(PcConfig config, String property) {

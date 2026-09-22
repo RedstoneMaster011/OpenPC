@@ -6,6 +6,8 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.util.Comparator;
+import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Stream;
@@ -49,33 +51,59 @@ public final class QemuSetup {
         Path target = requireGameQemuDirectory();
 
         try {
-            if (Files.exists(target)) {
+            if (Files.exists(target) && isComplete(target)) {
                 extracted.set(true);
                 return;
             }
+            if (Files.exists(target)) {
+                deleteRecursively(target);
+            }
+            Files.createDirectories(target);
 
             try (Stream<Path> walk = Files.walk(source)) {
-                walk.forEach(current -> {
-                    try {
-                        Path relative = source.relativize(current);
-                        Path destination = target.resolve(relative);
+                List<Path> entries = walk.sorted().toList();
+                for (Path current : entries) {
+                    String relative = source.relativize(current).toString().replace('\\', '/');
+                    Path destination = target.resolve(relative);
 
-                        if (Files.isDirectory(current)) {
-                            Files.createDirectories(destination);
-                        } else {
-                            Files.createDirectories(destination.getParent());
-                            Files.copy(current, destination, StandardCopyOption.REPLACE_EXISTING);
-                            applyExecutablePermission(destination);
-                        }
-                    } catch (IOException error) {
-                        throw new ExtractionFailure("Failed to extract bundled QEMU file " + current, error);
+                    if (Files.isDirectory(current)) {
+                        Files.createDirectories(destination);
+                    } else {
+                        Files.createDirectories(destination.getParent());
+                        Files.copy(current, destination, StandardCopyOption.REPLACE_EXISTING);
+                        applyExecutablePermission(destination);
                     }
-                });
+                }
             }
 
+            if (!isComplete(target)) {
+                throw new ExtractionFailure("Bundled QEMU extraction did not produce a usable binary.", null);
+            }
             extracted.set(true);
         } catch (IOException error) {
             throw new ExtractionFailure("Failed to create the openpc/qemu directory underneath " + gameDir, error);
+        }
+    }
+
+    private static boolean isComplete(Path dir) {
+        try (Stream<Path> children = Files.list(dir)) {
+            return children.map(path -> path.getFileName().toString())
+                    .anyMatch(name -> name.equals("qemu-system-x86_64") || name.equals("qemu-system-x86_64.exe")
+                            || name.equals("qemu-img") || name.equals("qemu-img.exe"));
+        } catch (IOException error) {
+            return false;
+        }
+    }
+
+    private static void deleteRecursively(Path root) throws IOException {
+        if (root == null || !Files.exists(root)) {
+            return;
+        }
+        try (Stream<Path> walk = Files.walk(root)) {
+            List<Path> paths = walk.sorted(Comparator.reverseOrder()).toList();
+            for (Path path : paths) {
+                Files.deleteIfExists(path);
+            }
         }
     }
 

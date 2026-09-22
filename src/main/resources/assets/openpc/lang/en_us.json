@@ -85,6 +85,7 @@
   "openpc.ui.confirm_delete": "Delete",
   "openpc.ui.confirm_delete_pc": "Delete %s? Its files will be lost and any running VM will stop.",
   "openpc.ui.power_on": "Turn on PC",
+  "openpc.ui.qemu_missing": "QEMU not found - install QEMU on your PATH or drop it into the openpc/qemu folder",
   "openpc.ui.power_off": "Turn OFF",
   "openpc.ui.paste_vm": "Paste VM",
   "openpc.ui.reset": "Reset",

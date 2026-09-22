@@ -79,6 +79,7 @@ public class PcBuilderScreen extends Screen {
     private int layoutMediaRows;
     private int layoutCompTextY;
     private int layoutCompLines;
+    private boolean qemuMissing;
 
     public PcBuilderScreen(BlockPos pos, PcConfig config) {
         super(Text.translatable("openpc.screen.builder"));
@@ -242,6 +243,7 @@ private void rebuildButtons() {
     private void buildClosedCaseButtons() {
         boolean valid = currentValidation != null && currentValidation.isValid();
         computeClosedLayout();
+        this.qemuMissing = !QemuEnvironment.isUsable();
         int xs = layoutSideX + 10;
         int iw = layoutSideW - 20;
 
@@ -255,7 +257,7 @@ private void rebuildButtons() {
         ButtonWidget power = ButtonWidget.builder(Text.translatable("openpc.ui.power_on"), b -> powerOn())
                 .dimensions(xs, layoutPowerY, iw, layoutPowerH)
                 .build();
-        power.active = valid && !sending;
+        power.active = valid && !sending && !qemuMissing;
         addDrawableChild(power);
 
         ButtonWidget open = ButtonWidget.builder(Text.translatable("openpc.ui.open_case"), b -> {
@@ -920,6 +922,9 @@ private void rebuildButtons() {
             context.drawTextWithShadow(textRenderer, Text.translatable("openpc.ui.section_cpu"), xs, layoutCpuY - 13, accent);
             context.drawTextWithShadow(textRenderer, Text.translatable("openpc.ui.section_media"), xs, layoutMediaY - 13, accent);
             context.drawTextWithShadow(textRenderer, Text.translatable("openpc.ui.section_installed"), xs, layoutCompTextY - 13, accent);
+            if (qemuMissing) {
+                context.drawTextWithShadow(textRenderer, Text.translatable("openpc.ui.qemu_missing"), xs, layoutPowerY + layoutPowerH + 4, 0xFFAA55);
+            }
             context.drawTextWithShadow(textRenderer, Text.literal("PC-" + working.pcId()), 12, 24, 0x80909B);
 
             List<Text> labels = componentLabels();
