@@ -20,6 +20,11 @@ public final class QemuArguments {
         List<String> args = new ArrayList<>();
         args.add(QemuEnvironment.binaryPath().toAbsolutePath().toString());
 
+        if (QemuEnvironment.detectOs() == QemuEnvironment.Os.WINDOWS) {
+            args.add("-L");
+            args.add(QemuSetup.requireGameQemuDirectory().toAbsolutePath().toString());
+        }
+
         HardwareDefinition cpu = HardwareRegistry.find(config.cpuId()).orElse(null);
         int cores = cpu == null ? 1 : Math.max(1, cpu.getInt(HardwareDefinitions.PROP_CORES, 1));
 
@@ -166,7 +171,11 @@ public final class QemuArguments {
             // Strict Intel Skylake layout, vendor masked Intel, contradicting AMD page structures explicitly disabled
             return "Skylake-Client,vendor=GenuineIntel,+hypervisor,+invtsc,-vme,-pdpe1gb,check";
         }
-        return cpu == null ? "host" : cpu.getProperty(HardwareDefinitions.PROP_QEMU_MODEL, "host");
+        String model = cpu == null ? "host" : cpu.getProperty(HardwareDefinitions.PROP_QEMU_MODEL, "host");
+        if (QemuEnvironment.detectOs() == QemuEnvironment.Os.WINDOWS && model.equals("host")) {
+            return "max";
+        }
+        return model;
     }
 
     public static int vncDisplayFor(long pcId) {
