@@ -62,7 +62,7 @@ public final class PcSerialization {
         root.addProperty(KEY_PC_ID, config.pcId());
         root.addProperty(KEY_NAME, nullToBlank(config.name()));
         root.addProperty(KEY_MOTHERBOARD, nullToBlank(config.motherboardId()));
-        root.add(KEY_CPU, stringsArray(config.cpuSlots()));
+        root.addProperty(KEY_CPU, nullToBlank(config.cpuId()));
         root.add(KEY_RAM, stringsArray(config.ramSlots()));
         root.add(KEY_STORAGE, stringsArray(config.storageSlots()));
         root.addProperty(KEY_GPU, nullToBlank(config.gpuId()));
@@ -92,17 +92,7 @@ public final class PcSerialization {
         PcConfig config = new PcConfig(root.has(KEY_PC_ID) ? root.get(KEY_PC_ID).getAsLong() : 0);
         config.setName(blankToNull(optionalString(root, KEY_NAME)));
         config.setMotherboardId(blankToNull(optionalString(root, KEY_MOTHERBOARD)));
-
-        config.cpuSlots().clear();
-        if (root.has(KEY_CPU)) {
-            JsonElement cpu = root.get(KEY_CPU);
-            if (cpu.isJsonArray()) {
-                config.cpuSlots().addAll(collectStrings(cpu));
-            } else if (cpu.isJsonPrimitive() && !cpu.getAsString().isBlank()) {
-                config.cpuSlots().add(cpu.getAsString());
-            }
-        }
-
+        config.setCpuId(blankToNull(optionalString(root, KEY_CPU)));
         config.setGpuId(blankToNull(optionalString(root, KEY_GPU)));
         config.setAudioId(blankToNull(optionalString(root, KEY_AUDIO)));
         config.setNetworkId(blankToNull(optionalString(root, KEY_NETWORK)));

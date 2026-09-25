@@ -109,22 +109,13 @@ public final class CaseModel {
     }
 
     private static void addCpu(List<Face> faces, PcConfig config) {
-        int slots = cpuSlotCount(config);
-        for (int i = 0; i < slots; i++) {
-            float x0 = 0.03f + i * 0.11f;
-            if (x0 + 0.14f > 0.5f) {
-                break;
-            }
-            boolean filled = config.cpuAt(i) != null;
-            float z1 = filled ? -0.12f : -0.26f;
-            ComponentTextures.Key key = filled ? ComponentTextures.Key.CPU : ComponentTextures.Key.CASE_INNER;
-            addBox(faces, Vec3.of(x0, -0.13f, -0.27f), Vec3.of(x0 + 0.14f, 0.01f, z1), key, filled ? 1.0f : 0.6f);
+        if (config.cpuId() == null) {
+            addBox(faces, Vec3.of(0.03f, -0.13f, -0.27f), Vec3.of(0.17f, 0.01f, -0.26f),
+                    ComponentTextures.Key.CASE_INNER, 0.6f);
+            return;
         }
-    }
-
-    private static int cpuSlotCount(PcConfig config) {
-        HardwareDefinition motherboard = HardwareRegistry.find(config.motherboardId()).orElse(null);
-        return motherboard == null ? 1 : Math.max(1, motherboard.getInt(HardwareDefinitions.PROP_CPU_SLOTS, 1));
+        addBox(faces, Vec3.of(0.03f, -0.13f, -0.27f), Vec3.of(0.17f, 0.01f, -0.12f),
+                ComponentTextures.Key.CPU, 1.0f);
     }
 
     private static void addRam(List<Face> faces, PcConfig config) {

@@ -25,23 +25,11 @@ public final class QemuArguments {
             args.add(QemuSetup.requireGameQemuDirectory().toAbsolutePath().toString());
         }
 
-        List<String> cpuIds = config.installedCpuIds();
-        HardwareDefinition cpu = cpuIds.isEmpty() ? null : HardwareRegistry.find(cpuIds.get(0)).orElse(null);
-        int cores = 0;
-        int threads = 0;
-        for (String id : cpuIds) {
-            HardwareDefinition definition = HardwareRegistry.find(id).orElse(null);
-            if (definition == null) {
-                continue;
-            }
-            cores += Math.max(1, definition.getInt(HardwareDefinitions.PROP_CORES, 1));
-            threads += Math.min(2, Math.max(1, definition.getInt(HardwareDefinitions.PROP_THREADS, 1)));
-        }
-        if (cores == 0) {
-            cores = 1;
-        }
-        // threads is the Hyper-Threading / SMT multiplier per core (QEMU allows 1 or 2)
-        threads = Math.min(2, Math.max(1, threads));
+        HardwareDefinition cpu = HardwareRegistry.find(config.cpuId()).orElse(null);
+        int cores = cpu == null ? 1 : Math.max(1, cpu.getInt(HardwareDefinitions.PROP_CORES, 1));
+
+        // threads acts strictly as a Hyper-Threading / SMT multiplier per core (1 or 2)
+        int threads = cpu == null ? 1 : Math.min(2, Math.max(1, cpu.getInt(HardwareDefinitions.PROP_THREADS, 1)));
         String cpuModel = cpuModel(config, cpu);
         long ramMb = Math.max(128, config.installedRamMegabytes());
 
